@@ -352,10 +352,15 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 
 ### Posting rules
 
-1. **One comment per PR.** Use `gh pr comment <n> --repo <owner/repo> --body` with a heredoc.
-2. If reposting after revisions: delete the prior compound-pr-review comment first (`gh api -X DELETE`) to avoid stacking.
-3. If pre-existing bugs were found, **do not** post them on the PR. Offer to file as separate issues (`gh issue create`). Touching them on the PR creates scope creep — the lesson from real reviews.
-4. Permalinks: include the head SHA in file:line citations if the author may force-push (`https://github.com/<owner>/<repo>/blob/<SHA>/<path>#L<start>-L<end>`).
+1. **Always post via `--body-file`, never via heredoc.** Markdown bodies must be written to a temp file (e.g. `/tmp/cpr-<pr>-body.md`) and posted with:
+   ```
+   gh pr comment <n> --repo <owner/repo> --body-file /tmp/cpr-<pr>-body.md
+   ```
+   **Why:** shell heredocs mangle backticks. A `` ``` `` inside `bash -c "$(cat <<'EOF' ... EOF)"` consistently survives as literal `` \``` `` in the rendered comment, breaking every code fence. This bug shipped on the first production run of this skill — do not repeat it. Editing existing comments uses the same rule via `gh api -X PATCH repos/<owner>/<repo>/issues/comments/<id> -F body=@/tmp/file.md`.
+2. **Verification after post.** Pull the rendered body back (`gh api repos/<owner>/<repo>/issues/comments/<id> --jq '.body' | grep -c '^```'`) and confirm the code-fence count is even and matches what you posted. Asymmetric or zero count = re-edit before declaring done.
+3. **One comment per PR.** If reposting after revisions: delete the prior compound-pr-review comment first (`gh api -X DELETE`) to avoid stacking — OR edit-in-place via PATCH (preferred when only content changed, keeps the original URL stable).
+4. If pre-existing bugs were found, **do not** post them on the PR. Offer to file as separate issues (`gh issue create`). Touching them on the PR creates scope creep — the lesson from real reviews.
+5. Permalinks: include the head SHA in file:line citations if the author may force-push (`https://github.com/<owner>/<repo>/blob/<SHA>/<path>#L<start>-L<end>`).
 
 ## Evidence discipline (composable from `strategy-generator:evidence-discipline`)
 
