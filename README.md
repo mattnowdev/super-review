@@ -1,6 +1,6 @@
-# compound-pr-review
+# super-review
 
-A multi-agent PR review skill for [Claude Code](https://docs.claude.com/en/docs/claude-code).
+A multi-agent PR review skill for [Claude Code](https://docs.claude.com/en/docs/claude-code). Covers every angle.
 
 Dispatches **N specialist reviewers in parallel** (cybersecurity, supply-chain, correctness, design / blast-radius, migration, performance, frontend, observability, tests), gates findings through an evidence-quoting false-positive filter, runs cross-reviewer collision + Opus meta-verification, and produces a **bounded, actionable report scoped strictly to the PR diff**.
 
@@ -64,26 +64,28 @@ The 🟣 **pre-existing** tier is the load-bearing scope guardrail. Pre-existing
 This repo is a [Claude Code skill](https://docs.claude.com/en/docs/claude-code/skills) — clone it into your `~/.claude/skills/` directory:
 
 ```bash
-git clone https://github.com/mattnowdev/compound-pr-review.git ~/.claude/skills/compound-pr-review
+git clone https://github.com/mattnowdev/super-review.git ~/.claude/skills/super-review
 ```
 
 Then in Claude Code, the skill is auto-discovered. Invoke with:
 
-- `/compound-pr-review <PR_URL_or_number>` or `/cpr`
-- "Compound review on PR #N"
+- `/super-review <PR_URL_or_number>` or `/sr`
+- "Super review on PR #N"
 - Paste a GitHub PR URL and say "review this"
+
+> Note on the name: this is a standalone skill, **not** part of the `superpowers:*` plugin pack. The naming overlap is cosmetic.
 
 ## Usage
 
 ```bash
 # Full review on a GitHub PR
-/cpr https://github.com/owner/repo/pull/42
+/sr https://github.com/owner/repo/pull/42
 
 # Fast mode for small PRs
-/cpr fast https://github.com/owner/repo/pull/42
+/sr fast https://github.com/owner/repo/pull/42
 
 # Security-only on the current branch
-/cpr sec
+/sr sec
 ```
 
 The skill resolves the diff target by priority:
@@ -99,7 +101,7 @@ If the diff exceeds ~3000 LOC, it proposes chunking by subsystem before proceedi
 
 This skill is designed to compose with, not duplicate, existing primitives:
 
-| Existing skill | How `compound-pr-review` uses it |
+| Existing skill | How `super-review` uses it |
 |---|---|
 | `security-review` | Baked into the Cybersec L5 reviewer prompt in Phase 1 |
 | `superpowers:dispatching-parallel-agents` | The dispatch mechanism for Phase 1 |
@@ -112,7 +114,7 @@ This skill is designed to compose with, not duplicate, existing primitives:
 Single GitHub comment per PR, structure:
 
 ```markdown
-🔧 **Compound PR review — <mode> mode**
+🔧 **Super review — <mode> mode**
 
 **Verdict:** Ready to merge | Needs attention | Needs work
 

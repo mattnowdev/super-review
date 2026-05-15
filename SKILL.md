@@ -1,16 +1,17 @@
 ---
-name: compound-pr-review
+name: super-review
 description: >
-  Compound multi-agent PR review pipeline. Dispatches N specialist reviewers in
-  parallel (security, correctness, design, migration, perf, supply-chain, blast-
-  radius), gates findings through an evidence-quoting false-positive filter, runs
-  cross-reviewer collision + Opus meta-verification, and synthesizes a bounded,
-  actionable report scoped strictly to the PR diff. Use when the user says
-  "review this PR", "compound review", "/compound-pr-review", "/cpr", or pastes a
-  github PR URL and asks for review. Tuned for L5 software + L5 cybersec.
+  Multi-agent PR review pipeline that covers every angle. Dispatches N
+  specialist reviewers in parallel (security, correctness, design, migration,
+  perf, supply-chain, blast-radius), gates findings through an evidence-quoting
+  false-positive filter, runs cross-reviewer collision + Opus meta-verification,
+  and synthesizes a bounded, actionable report scoped strictly to the PR diff.
+  Use when the user says "review this PR", "super review", "/super-review",
+  "/sr", or pastes a github PR URL and asks for review. Tuned for L5 software +
+  L5 cybersec.
 ---
 
-# Compound PR Review
+# Super Review
 
 Parallel specialist reviewers → adversarial false-positive gate → meta-verifier → synthesis. Findings ship only if twice-confirmed with quoted code evidence. Scope is bounded to the PR diff; pre-existing bugs are tagged separately and never block.
 
@@ -28,10 +29,10 @@ Phase 5: SYNTHESIZE & POST         (bounded report → GitHub comment + local su
 ## Modes
 
 - **Full** (default): all 5 phases. ~6-12 minutes for a non-trivial PR.
-- **Fast** (`/cpr fast`): Phase 0 → Phase 1 (≤3 reviewers) → Phase 2 → Phase 5. Skip collision + meta. Use for PRs <200 LOC or trusted authors.
-- **Security-only** (`/cpr sec`): Phase 0 → cybersec + supply-chain reviewers only → full gate. Use when auth/crypto/IAM changes dominate.
+- **Fast** (`/sr fast`): Phase 0 → Phase 1 (≤3 reviewers) → Phase 2 → Phase 5. Skip collision + meta. Use for PRs <200 LOC or trusted authors.
+- **Security-only** (`/sr sec`): Phase 0 → cybersec + supply-chain reviewers only → full gate. Use when auth/crypto/IAM changes dominate.
 
-Announce mode at start: `Using compound-pr-review in <mode> mode.`
+Announce mode at start: `Using super-review in <mode> mode.`
 
 ### Phase-artifact requirement (anti-skip gate)
 
@@ -46,7 +47,7 @@ Announce mode at start: `Using compound-pr-review in <mode> mode.`
 | 4 | `<pr>/meta.md` — Opus verdicts on compounding pessimism, over-correction, missed-positives spot-check. |
 | 5 | The GitHub comment body, posted or queued for approval. |
 
-These artifacts can live under `.claude/cpr/<pr-number>/` in the repo (gitignored) or in a tmpdir — what matters is they exist and are quotable in case of dispute. The point isn't paperwork; it's that **a phase without an artifact didn't really happen**.
+These artifacts can live under `.claude/super-review/<pr-number>/` in the repo (gitignored) or in a tmpdir — what matters is they exist and are quotable in case of dispute. The point isn't paperwork; it's that **a phase without an artifact didn't really happen**.
 
 ## Phase 0: SCOPE-LOCK & GROUND
 
@@ -311,7 +312,7 @@ Output: a final findings list, ranked. This is the input to synthesis.
 ### Output template (GitHub comment)
 
 ```markdown
-🔧 **Compound PR review — <mode> mode**
+🔧 **Super review — <mode> mode**
 
 Two-pass review (N parallel specialists → false-positive gate → Opus meta-verify). Only twice-confirmed findings below.
 
@@ -352,13 +353,13 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 
 ### Posting rules
 
-1. **Always post via `--body-file`, never via heredoc.** Markdown bodies must be written to a temp file (e.g. `/tmp/cpr-<pr>-body.md`) and posted with:
+1. **Always post via `--body-file`, never via heredoc.** Markdown bodies must be written to a temp file (e.g. `/tmp/super-review-<pr>-body.md`) and posted with:
    ```
-   gh pr comment <n> --repo <owner/repo> --body-file /tmp/cpr-<pr>-body.md
+   gh pr comment <n> --repo <owner/repo> --body-file /tmp/super-review-<pr>-body.md
    ```
    **Why:** shell heredocs mangle backticks. A `` ``` `` inside `bash -c "$(cat <<'EOF' ... EOF)"` consistently survives as literal `` \``` `` in the rendered comment, breaking every code fence. This bug shipped on the first production run of this skill — do not repeat it. Editing existing comments uses the same rule via `gh api -X PATCH repos/<owner>/<repo>/issues/comments/<id> -F body=@/tmp/file.md`.
 2. **Verification after post.** Pull the rendered body back (`gh api repos/<owner>/<repo>/issues/comments/<id> --jq '.body' | grep -c '^```'`) and confirm the code-fence count is even and matches what you posted. Asymmetric or zero count = re-edit before declaring done.
-3. **One comment per PR.** If reposting after revisions: delete the prior compound-pr-review comment first (`gh api -X DELETE`) to avoid stacking — OR edit-in-place via PATCH (preferred when only content changed, keeps the original URL stable).
+3. **One comment per PR.** If reposting after revisions: delete the prior super-review comment first (`gh api -X DELETE`) to avoid stacking — OR edit-in-place via PATCH (preferred when only content changed, keeps the original URL stable).
 4. If pre-existing bugs were found, **do not** post them on the PR. Offer to file as separate issues (`gh issue create`). Touching them on the PR creates scope creep — the lesson from real reviews.
 5. Permalinks: include the head SHA in file:line citations if the author may force-push (`https://github.com/<owner>/<repo>/blob/<SHA>/<path>#L<start>-L<end>`).
 
@@ -407,8 +408,8 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 
 ## Triggers
 
-- `/compound-pr-review <PR_URL_or_number>` (also: `/cpr`)
-- "Compound review on PR #N"
+- `/super-review <PR_URL_or_number>` (also: `/sr`)
+- "Super review on PR #N"
 - "Full review of this branch"
 - Any GitHub PR URL pasted with "review"
-- After `/finishing-a-development-branch` selects "merge" — chain into compound-pr-review for the final pass.
+- After `/finishing-a-development-branch` selects "merge" — chain into super-review for the final pass.
