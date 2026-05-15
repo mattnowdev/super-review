@@ -33,6 +33,21 @@ Phase 5: SYNTHESIZE & POST         (bounded report → GitHub comment + local su
 
 Announce mode at start: `Using compound-pr-review in <mode> mode.`
 
+### Phase-artifact requirement (anti-skip gate)
+
+**Every phase in the active mode MUST produce a named artifact.** Missing artifact = skill failure; do not advance.
+
+| Phase | Required artifact |
+|---|---|
+| 0 | `<pr>/scope.md` — written scope brief (file inventory, stack signals, CLAUDE.md rules quoted). Not implicit. |
+| 1 | `<pr>/reviewers/<role>.md` — one file per dispatched reviewer with their findings + cleared list. |
+| 2 | `<pr>/gate.md` — every Phase 1 finding listed with CONFIRMED/PARTIAL/NOT CONFIRMED/STALE verdict + quoted code. Not "top N". |
+| 3 | `<pr>/collide.md` — KEPT/ESCALATED/DROPPED/NEW delta table. **Skipping Phase 3 is the most common pipeline failure.** If folding into synthesis seems faster, you are doing it wrong. |
+| 4 | `<pr>/meta.md` — Opus verdicts on compounding pessimism, over-correction, missed-positives spot-check. |
+| 5 | The GitHub comment body, posted or queued for approval. |
+
+These artifacts can live under `.claude/cpr/<pr-number>/` in the repo (gitignored) or in a tmpdir — what matters is they exist and are quotable in case of dispute. The point isn't paperwork; it's that **a phase without an artifact didn't really happen**.
+
 ## Phase 0: SCOPE-LOCK & GROUND
 
 **Single agent, mandatory first step. Output is consumed by every later phase.**
@@ -80,15 +95,24 @@ Dispatch N specialist subagents in **a single message with multiple tool calls**
 
 Skip reviewers whose triggers don't fire. Don't dispatch unconditionally — generic reviewers produce generic findings.
 
+**Anti-folding rules** (the most common dispatch mistake — one reviewer absorbing another's scope produces blind spots):
+
+- **Frontend MUST be its own dispatch** if any of: `client/src/**` modified files > 20, OR the PR adds permission-gated components (Viewer/Commenter/Editor views, role-aware modals, permission stores). Folding frontend into "design/correctness" is forbidden when these triggers fire — it consistently misses i18n parity, a11y on new modals, and role-gated affordance audits.
+- **Migration MUST be its own dispatch** if any of: >1 migration file in the diff, NOT NULL columns added, indexes added, columns dropped. Folding into "design" misses tenant-scoping audits and transactionality checks.
+- **Cybersec is never folded.** If you find yourself thinking "the correctness reviewer can also check auth", stop and dispatch cybersec separately.
+- A folded scope must be explicitly declared at dispatch time ("Correctness reviewer also covering migration items 1-5 because the migration triggers did NOT fire") so the meta-verifier can audit the decision.
+
 ### Universal evidence contract (every reviewer)
 
 Every finding must include:
 - **Severity** (see taxonomy below) + **confidence tier** (HIGH/MED/LOW). Only HIGH ships in the final report; MED/LOW logged for the meta-verifier.
-- **Scope tag**: `[in-diff]` or `[pre-existing]`. Pre-existing findings are tagged, not dropped, never block.
+- **Scope tag**: `[in-diff]`, `[pre-existing]`, or `[amplified-pre-existing]`. Pre-existing findings are tagged, not dropped, never block.
 - **File:line range** matching the actual diff hunks.
 - **Verbatim code quote** (3-10 lines).
 - **Why-it-matters**: one sentence on real-world impact (a user-affecting failure, not a vibe).
 - **Fix**: one sentence on the concrete change.
+
+**Red flags are not exempt.** Every ⚠️ red flag entry MUST cite at least one file:line + verbatim quote that anchors the future scenario. "Concurrency hygiene drift" alone fails the contract; "concurrency hygiene drift: file A has lock, file B:line X is RMW, file C:line Y is TOCTOU" passes. Vibe paragraphs do not ship.
 
 **Banned phrasings** (auto-flag if produced):
 - "could be problematic", "might cause issues", "this looks suspicious"
@@ -273,6 +297,7 @@ Output: a final findings list, ranked. This is the input to synthesis.
 | 🟡 **FIX-FOLLOWUP** | Architecture / perf / observability concerns; file as issue | New abstraction lock-in, missing metric, blast-radius widening |
 | ⚪ **NIT** | Tiny; cap 3, "plus N similar" for overflow | One-line fix, naming clarity that affects new code |
 | 🟣 **PRE-EXISTING** | Bug exists on master; PR exposes/touches but doesn't introduce | Tagged separately; never blocks |
+| ⚠️🟣 **AMPLIFIED-PRE-EXISTING** | Bug exists on master AND this PR materially widens its blast radius (e.g. moves it from self-only to cross-tenant) | Appears in BOTH the ⚠️ red-flag section (with the amplification scenario) AND the 🟣 footer (with the underlying bug). Never blocks merge, but must be filed as a follow-up issue. |
 | ⚠️ **RED FLAG** | Damage beyond the diff — separate header section | Irreversibility, lock-in, supply-chain delta, foot-gun, intent laundering |
 
 **Hard caps on the posted report:**
@@ -295,7 +320,7 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 ---
 
 ### ⚠️ Red flags (damage beyond the diff)
-<≤3 items, each: one paragraph naming the future scenario + the trigger to invalidate the concern>
+<≤3 items, each: one paragraph naming the future scenario + at least one file:line + verbatim quote + the trigger to invalidate the concern. ⚠️🟣 Amplified-pre-existing items go here too, marked, and ALSO appear in the 🟣 footer.>
 
 ---
 
