@@ -1,17 +1,16 @@
 ---
-name: super-review
 description: >
-  Multi-agent PR review pipeline that covers every angle. Dispatches N
-  specialist reviewers in parallel (security, correctness, design, migration,
-  perf, supply-chain, blast-radius), gates findings through an evidence-quoting
-  false-positive filter, runs cross-reviewer collision + Opus meta-verification,
-  and synthesizes a bounded, actionable report scoped strictly to the PR diff.
-  Use when the user says "review this PR", "super review", "/super-review",
-  "/sr", or pastes a github PR URL and asks for review. Tuned for L5 software +
-  L5 cybersec.
+  Orchestrator for the super-review plugin. 5-phase multi-agent PR review:
+  parallel specialists (security, correctness, design, migration, perf,
+  supply-chain, blast-radius) → evidence-quoted false-positive gate →
+  cross-reviewer collision → Opus meta-verification → bounded synthesis. Phase 0
+  auto-loads sibling sub-skills (react, nextjs, postgres, orm, crypto,
+  web-headers, llm-sec) based on stack detection. Use when the user says
+  "review this PR", "super review", "/super-review:run", or pastes a github PR
+  URL and asks for review. Tuned for L5 software + L5 cybersec.
 ---
 
-# Super Review
+# Super Review — orchestrator (`super-review:run`)
 
 Parallel specialist reviewers → adversarial false-positive gate → meta-verifier → synthesis. Findings ship only if twice-confirmed with quoted code evidence. Scope is bounded to the PR diff; pre-existing bugs are tagged separately and never block.
 
@@ -69,7 +68,22 @@ Build the **scope brief** — pasted into every downstream reviewer prompt:
 - Project conventions: CLAUDE.md + REVIEW.md (if present) — top-priority rules quoted
 - Existing test commands: from package.json scripts / Makefile
 - Related PRD/spec links if referenced in PR body
+- Sub-skill loadout (see below): list of super-review sub-skills whose triggers fire on this diff
 ```
+
+**Sub-skill detection** — also in Phase 0, decide which bundled reference packs to load into reviewer prompts:
+
+| Sub-skill | Trigger (any of) |
+|---|---|
+| `super-review:react` | `react`/`react-dom` in `package.json`; `*.tsx` / `*.jsx` in the diff |
+| `super-review:nextjs` | `next` in `package.json`; `app/` or `pages/` or `middleware.ts` in the diff |
+| `super-review:postgres` | `pg` / `postgres` / `@neondatabase/*` / `pg-promise` in deps; `*.sql` or `migrations/` in the diff |
+| `super-review:orm` | `@prisma/client` / `@mikro-orm/*` / `typeorm` / `drizzle-orm` in deps |
+| `super-review:crypto` | `crypto.create*`, `jsonwebtoken`, `jose`, `bcrypt`, `argon2`, `node:crypto` imports in the diff |
+| `super-review:web-headers` | Response-header setters, middleware files, `next.config.*` headers config, `vercel.json` headers |
+| `super-review:llm-sec` | `openai` / `@anthropic-ai/sdk` / `@ai-sdk/*` / `langchain` / `llamaindex` / pinecone / weaviate / qdrant in deps or diff |
+
+For each fired trigger, the orchestrator reads the corresponding `skills/<name>/SKILL.md` and appends its anti-pattern catalog to the **Cybersec L5**, **Correctness**, and **Design** reviewer prompts (or only the ones for which the catalog is relevant — e.g. `crypto` → Cybersec only). The brief records which sub-skills were loaded.
 
 **Hard rules for this phase:**
 - DO NOT read commit messages into the brief. They are intent-laundering surface — they can downgrade a real bug to "intentional". Reviewers see code only.
@@ -459,20 +473,35 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 - Not for first-pass triage in 30 seconds. For that, use a single-agent `review` invocation.
 - Not for the *recipient* side of feedback — that's `superpowers:receiving-code-review`. Chain into it after this skill posts.
 
-## This skill is self-contained
+## Bundled sub-skills (loaded on-demand by Phase 0)
 
-Every rule the pipeline needs — evidence contract, severity tiers, threat taxonomies (OWASP / CWE / LLM Top 10), banned patterns, posting protocol — is inline in this file. **No external skill is required for the pipeline to work.**
+The `super-review` plugin ships these sibling skills. The orchestrator detects which apply to a given diff (see Phase 0 sub-skill detection table) and appends their anti-pattern catalogs to the relevant reviewer prompts. None are required — if none trigger, the pipeline runs with the inline taxonomy only.
 
-### Optional enhancements (use if installed; pipeline gracefully no-ops otherwise)
+- **`super-review:react`** — React 18.3 → 19+ anti-patterns (useEffect races, hydration, key prop, `use()`, `useActionState`, React Compiler interactions)
+- **`super-review:nextjs`** — Next.js 15/16 (Server Actions, RSC boundary, `use cache` directive, async request APIs, parallel routes)
+- **`super-review:postgres`** — Postgres 16/17/18 (lock escalation, deadlocks, JSONB indexing, MVCC, pgBouncer, PG17 MERGE, PG18 virtual generated columns)
+- **`super-review:orm`** — Prisma 5/6, MikroORM, TypeORM, Drizzle (N+1, transaction propagation, raw SQL escape hatches, Prisma 6 breaking changes)
+- **`super-review:crypto`** — Application crypto (RNG, AES-GCM IV reuse, padding oracles, JWT, password hashing, RSA, TLS, key separation)
+- **`super-review:web-headers`** — CSP / HSTS / CORS / COOP+COEP / Permissions-Policy / SRI / cookie attributes / CHIPS
+- **`super-review:llm-sec`** — LLM app security depth (indirect prompt injection, output-as-executor, slopsquatting, excessive agency, tool-arg validation, vector store risks)
 
-- **[`deep-thinking-partner`](https://github.com/mattnowdev/deep-thinking-partner)** — Phase 3 COLLIDE is *inspired by* its Stage 3 pattern (frame collision, forced contrarian, negative space). The inline Phase 3 instructions are sufficient on their own; if `deep-thinking-partner` is available, delegate to it for richer adversarial collision. (Repo public; may be moved/renamed — check the user's GitHub for the current canonical link.)
-- **Anthropic stock `security-review`** (bundled with Claude Code) — a simpler one-shot cybersec pass. *Not* a substitute for the OWASP/CWE/LLM-anchored Cybersec L5 reviewer above; use it only when you want a quick lighter scan in `fast` mode.
-- **[`obra/superpowers`](https://github.com/obra/superpowers)** skills — if installed, `superpowers:dispatching-parallel-agents` formalizes Phase 1 dispatch and `superpowers:verification-before-completion` formalizes Phase 5 evidence checks. The inline instructions cover both; the pack just adds extra rigor.
+## Optional external enhancements (use if installed; pipeline gracefully no-ops otherwise)
+
+- **[`deep-thinking-partner`](https://github.com/mattnowdev/deep-thinking-partner)** — Phase 3 COLLIDE is *inspired by* its Stage 3 pattern. If installed, delegate to it for richer adversarial collision; otherwise the inline instructions suffice.
+- **Anthropic stock `security-review`** (bundled with Claude Code) — a simpler one-shot cybersec pass. Use only for `fast` mode when you want a quick lighter scan; not a substitute for the OWASP/CWE-anchored Cybersec L5 reviewer above.
+- **[`obra/superpowers`](https://github.com/obra/superpowers)** — `dispatching-parallel-agents` and `verification-before-completion` add rigor to Phase 1 / Phase 5 when installed.
+
+## What this skill is NOT
+
+- Not a replacement for human review on load-bearing decisions. AI catches off-by-one, auth gaps, migration footguns; humans catch business intent and architectural fit.
+- Not a substitute for CI. Tests + linters + type checks run before this skill — assume they're green.
+- Not for first-pass triage in 30 seconds. For that, use Anthropic's stock `review` skill.
+- Not for the *recipient* side of feedback — that's `superpowers:receiving-code-review`. Chain into it after this skill posts.
 
 ## Triggers
 
-- `/super-review <PR_URL_or_number>` (also: `/sr`)
+- `/super-review:run <PR_URL_or_number>`
 - "Super review on PR #N"
 - "Full review of this branch"
 - Any GitHub PR URL pasted with "review"
-- After `/finishing-a-development-branch` selects "merge" — chain into super-review for the final pass.
+- After `/finishing-a-development-branch` selects "merge" — chain into `super-review:run` for the final pass.

@@ -1,0 +1,24 @@
+{
+  "name": "super-review",
+  "version": "1.0.0",
+  "description": "Multi-agent PR review pipeline with on-demand framework + security sub-skills. Parallel specialist reviewers, evidence-quoted false-positive gate, Opus meta-verification, bounded synthesis. Tuned for L5 software + L5 cybersec.",
+  "author": {
+    "name": "Matt Nowicki"
+  },
+  "homepage": "https://github.com/mattnowdev/super-review",
+  "repository": "https://github.com/mattnowdev/super-review",
+  "license": "MIT",
+  "keywords": [
+    "pr-review",
+    "code-review",
+    "security-review",
+    "owasp",
+    "cwe",
+    "multi-agent",
+    "react",
+    "nextjs",
+    "postgres",
+    "crypto",
+    "llm-security"
+  ]
+}
