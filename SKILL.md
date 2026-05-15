@@ -130,22 +130,55 @@ Each role prompt is a fixed template. Substitute `{{SCOPE_BRIEF}}` and `{{PR_PAT
 
 > You are a senior application security engineer (L5). Review only the changes in {{PR_PATH}} introduced between BASE and HEAD per {{SCOPE_BRIEF}}.
 >
-> **Threats to enumerate (in priority order):**
-> 1. **AuthN / AuthZ**: new endpoints without auth gate; role-hierarchy bypasses; IDOR via guessable IDs; tenant scoping breaks.
-> 2. **Injection**: SQL via string-concat, NoSQL operator injection, OS command injection, template injection, prompt injection sinks.
-> 3. **Crypto**: weak primitives, ECB mode, MD5/SHA1 for security, JWT `alg: none`, missing signature verification, hardcoded keys, weak RNG (`Math.random()` for tokens).
-> 4. **Secrets / config**: secrets in code, secrets logged, secrets in URLs, secrets in error messages, default credentials.
-> 5. **Deserialization / parsing**: unsafe `eval`, `pickle`, `yaml.load`, `Function()`, regex DOS.
-> 6. **SSRF / XXE / open redirect**.
-> 7. **XSS**: reflected, stored, DOM via `dangerouslySetInnerHTML` / `innerHTML` / `v-html` / `bypassSecurityTrust*`.
-> 8. **Mass assignment**: client-controlled fields persisted server-side without filtering (identity, role, owner_id, price).
-> 9. **Race conditions**: TOCTOU on auth, lost-update on credit/balance/inventory, missing transactions on multi-step state changes.
-> 10. **Rate limiting**: new auth/expensive endpoint without rate limits.
-> 11. **Cryptographic identifiers**: share-tokens / invite-tokens — entropy, TTL, revocation, single-use vs reusable.
+> **Enumerate threats against these canonical taxonomies. Cite the ID(s) with every finding:**
 >
-> **Confidence rule (Sentry pattern):** HIGH = vulnerable pattern + attacker-controlled input traced through the diff. MED = pattern only. LOW = defense-in-depth.
+> **OWASP Top 10 2021** (web application, current release as of 2026):
+> - A01 Broken Access Control · A02 Cryptographic Failures · A03 Injection
+> - A04 Insecure Design · A05 Security Misconfiguration · A06 Vulnerable/Outdated Components
+> - A07 Identification & Authentication Failures · A08 Software/Data Integrity Failures
+> - A09 Security Logging/Monitoring Failures · A10 SSRF
+>
+> **OWASP API Top 10 2023** (every endpoint touched is in scope):
+> - API1 BOLA (object-level authz — the IDOR class) · API2 Broken Authentication
+> - API3 BOPLA (property-level authz — mass assignment) · API4 Unrestricted Resource Consumption
+> - API5 Function-Level Authz · API6 Unrestricted Access to Sensitive Business Flows
+> - API7 SSRF · API8 Security Misconfiguration · API9 Improper Inventory Mgmt · API10 Unsafe Consumption of APIs
+>
+> **OWASP LLM Top 10 2025** (any code that calls an LLM, ingests AI output, or builds prompts):
+> - LLM01 Prompt Injection (direct + **indirect** via tool input, retrieved docs, file content)
+> - LLM02 Sensitive Information Disclosure · LLM03 Supply Chain (model/data provenance)
+> - LLM04 Data and Model Poisoning · LLM05 Improper Output Handling (model output used as code/SQL/HTML/shell)
+> - LLM06 Excessive Agency (model with tool access exceeds caller's privileges)
+> - LLM07 System Prompt Leakage · LLM08 Vector/Embedding Weaknesses
+> - LLM09 Misinformation · LLM10 Unbounded Consumption
+>
+> **CWE Top 25 2024** (cite specific CWE-IDs when applicable):
+> CWE-79 XSS · CWE-787 OOB Write · CWE-89 SQLi · CWE-352 CSRF · CWE-22 Path traversal
+> CWE-125 OOB Read · CWE-78 OS command injection · CWE-416 UAF · CWE-862 Missing authz
+> CWE-434 Unrestricted upload · CWE-94 Code injection · CWE-20 Improper input validation
+> CWE-77 Command injection · CWE-287 Improper authentication · CWE-269 Improper priv mgmt
+> CWE-502 Deserialization of untrusted data · CWE-200 Information exposure
+> CWE-863 Incorrect authz · CWE-918 SSRF · CWE-476 NULL deref · CWE-798 Hardcoded creds
+> CWE-190 Integer overflow · CWE-400 Uncontrolled resource consumption · CWE-306 Missing auth for critical function
+>
+> **2025-era threat addendum** (categories that have eaten real production code in the last 24 months and are not yet fully reflected in the lists above):
+> - **Indirect prompt injection**: user-controlled content + retrieved docs + tool output flowing into LLM prompts without delimiter discipline or output validation.
+> - **AI output as executor input**: model-generated SQL / shell / HTML / code passed to interpreters or rendered without sandboxing.
+> - **Supply-chain primitives** (post-axios, post-xz, post-eslint-config-prettier): any new dep with a `postinstall` / `preinstall` script; maintainer change < 90 days old; cross-major version bumps; lockfile-only edits without `package.json` deltas; missing sigstore/cosign or SLSA-provenance verification on releases that should have it.
+> - **Cloud IMDS / SSRF**: requests to `169.254.169.254`, link-local, RFC1918 private ranges, DNS-rebinding-prone host validation, IPv6 mapped variants.
+> - **JWT modern flaws**: alg confusion (HS256 verified with RS256 public key as HMAC secret), `kid` header path-traversal/SQLi, missing `aud`/`iss` validation, refresh tokens with no rotation, JWT-as-session-cookie.
+> - **Webhook handlers**: missing HMAC signature verification, missing timestamp/nonce check (replay), constant-time compare not used.
+> - **GraphQL**: missing query depth/complexity limit, introspection enabled in prod, alias abuse for rate-limit evasion, batched mutations bypassing per-call auth.
+> - **Prototype pollution sinks**: `Object.assign` / `_.merge` / `JSON.parse → assign` paths with attacker-controlled keys (`__proto__`, `constructor`, `prototype`).
+> - **Serverless state reuse**: in-memory caches/globals shared across invocations of the same warm Lambda/Worker — auth state, user context, request ID bleed.
+> - **Modern XSS**: trusted-types bypass; framework sanitizer escapes (`dangerouslySetInnerHTML`, `v-html`, `bypassSecurityTrust*`, `{@html}`); attribute-injected `javascript:` URLs in `<a href>` / `<form action>` / `<iframe src>`.
+> - **Concurrency primitives**: lost-update on counters/balances (read-modify-write to a remote store), TOCTOU on auth checks before async work, double-spending of share-link / invite tokens.
+>
+> **Confidence rule (Sentry-pattern):** HIGH = vulnerable pattern + attacker-controlled input traced through the diff. MED = pattern matches but input source unclear. LOW = defense-in-depth only.
 > **Report only HIGH.** Log MED/LOW separately for the meta-verifier.
-> Cap: 8 findings. Quality over quantity. Skip OWASP-flavored generic warnings.
+>
+> **Every finding must cite: OWASP ID(s) + CWE ID + file:line range + verbatim code quote + concrete exploit scenario (one sentence) + fix (one sentence).**
+> Cap: 8 findings. Don't list a category without concrete code evidence. Skip generic "you should validate input" — only specific, exploitable findings ship.
 
 #### Supply-chain
 
@@ -173,16 +206,43 @@ Each role prompt is a fixed template. Substitute `{{SCOPE_BRIEF}}` and `{{PR_PAT
 
 #### Design / blast-radius
 
-> You evaluate the **damage this PR could cause beyond what the diff shows**. Categories:
+> You evaluate the **damage this PR could cause beyond what the diff shows**. Three lenses: structural risk, principle violations (only when load-bearing), distributed-systems hygiene (only when relevant).
+>
+> **Structural risks** (every finding names the future damage scenario, not just the structure):
 > 1. **Irreversibility**: destructive migration, schema drop, ID-space change, deleted feature flag, removed backward-compat shim.
-> 2. **Architectural lock-in**: new abstraction layer that future code will accrete to; new framework introduced for a single use case; new top-level module with weak boundary.
+> 2. **Architectural lock-in**: new abstraction layer that future code will accrete to; new framework for a single use case; new top-level module with weak boundary.
 > 3. **Surface widening**: new public API, new auth surface, new file upload path, new external network call, new IAM grant.
 > 4. **Coupling introduced**: new cross-module imports that weren't there; circular dependency risk; new shared mutable state.
 > 5. **Foot-gun**: API that *invites* misuse by callers (no type narrowing on dangerous values, easy-to-forget cleanup, error swallowed by design).
-> 6. **Intent laundering** (silent catch, swallowed error, fail-open default).
+> 6. **Intent laundering**: silent catch, swallowed error, fail-open default, default value masking a missing key.
+> 7. **Chesterton's Fence**: PR removes a guard / fallback / weird-looking code without naming what it was for.
 >
-> Each finding must name the future damage scenario, not just describe the structure.
-> Cap: 5 findings.
+> **Principle violations** (only flag when concretely load-bearing — not every SRP nit ships):
+> - **SOLID**:
+>   - **SRP** — class/module with two clearly distinct reasons to change in the diff
+>   - **OCP** — pattern of modifying existing class to add a case, where the case should have been new subtype/strategy
+>   - **LSP** — subtype broken parent contract (return type narrowed to throw, precondition strengthened, postcondition weakened)
+>   - **ISP** — fat interface forces consumers to implement methods they don't use
+>   - **DIP** — high-level module imports concrete low-level (`import { PostgresClient }` in a use-case file)
+> - **DRY**: real duplication of logic (copy-pasted with one tweak that will diverge), not "looks similar". Three similar lines is not duplication.
+> - **YAGNI**: new abstraction with zero current second caller. New config flag with no consumer.
+> - **Law of Demeter**: `a.b.c.d.method()` chains crossing module boundaries.
+> - **Postel's Law**: input-validation strictness drift on the receive side; new endpoint accepting fields the schema doesn't declare.
+> - **Hyrum's Law**: behavior other code now depends on, being changed silently (timestamp precision, ordering of iteration, default value, error message text used in tests).
+> - **Conway's Law leak**: module boundary mirrors team boundary, not problem boundary.
+>
+> **Distributed-systems checklist** (flag only when the diff introduces or modifies network calls / queues / RPC / cross-service state):
+> - **8 fallacies of distributed computing** — which one is the PR assuming away? (network reliable, latency zero, bandwidth infinite, network secure, topology stable, one administrator, transport homogeneous, transport cost zero)
+> - **Idempotency**: retries safe? unique idempotency key? at-least-once delivery handled? duplicate-detection window?
+> - **Timeout / retry / backoff**: defined? bounded? jittered? per-request budget?
+> - **Circuit breaker / bulkhead / pool isolation** on new external call?
+> - **Clock skew**: code assumes monotonic / synchronized clocks across hosts?
+> - **Causality / ordering**: messages may re-order? exactly-once vs at-least-once semantics explicit?
+> - **Saga / 2PC / outbox / SAGA-compensating-action**: distributed transaction across services without a coordination pattern?
+> - **Partial failure**: what happens if half the writes succeed?
+>
+> Each finding must name the **specific future scenario** the issue enables, with a concrete trigger that would falsify the concern.
+> Cap: 6 findings.
 
 #### Migration / DB
 
@@ -363,12 +423,14 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 4. If pre-existing bugs were found, **do not** post them on the PR. Offer to file as separate issues (`gh issue create`). Touching them on the PR creates scope creep — the lesson from real reviews.
 5. Permalinks: include the head SHA in file:line citations if the author may force-push (`https://github.com/<owner>/<repo>/blob/<SHA>/<path>#L<start>-L<end>`).
 
-## Evidence discipline (composable from `strategy-generator:evidence-discipline`)
+## Evidence discipline
 
-- Every finding ends with `file:path:line` + a verbatim code quote.
+- Every finding ends with `file:path:line` + a verbatim code quote (3-10 lines).
 - Confidence tier explicit: HIGH only ships. MED/LOW only in the meta-verifier's working notes.
+- **Cybersec findings additionally cite OWASP ID(s) + CWE ID.** "Auth gap" alone fails; "API1 BOLA / CWE-862 — endpoint trusts user-supplied `bookId` without authz check at controllers/foo.ts:42-48" passes.
 - No commit-message reasoning. No author-intent inference. Code only.
 - 5 random spot-checks at the end of Phase 5: pull 5 cited line ranges, re-open the files, confirm the quoted code is byte-accurate.
+- Banned qualifiers anywhere in a finding: "could be", "might", "consider", "would be nice", "looks suspicious". Use them only with a concrete anchor (file:line + verbatim quote) that makes the qualifier load-bearing.
 
 ## Banned patterns (auto-flag in finding bodies)
 
@@ -397,14 +459,15 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 - Not for first-pass triage in 30 seconds. For that, use a single-agent `review` invocation.
 - Not for the *recipient* side of feedback — that's `superpowers:receiving-code-review`. Chain into it after this skill posts.
 
-## Composing with existing skills
+## This skill is self-contained
 
-- **`security-review`** → bake into the Cybersec L5 reviewer prompt above (Phase 1).
-- **`superpowers:dispatching-parallel-agents`** → the actual dispatch mechanism in Phase 1.
-- **`superpowers:verification-before-completion`** → Phase 2 evidence gate + Phase 5 spot-checks.
-- **`strategy-generator:evidence-discipline`** → citation/confidence rules.
-- **`strategy-generator:stress-test`** → can be invoked at end of Phase 4 as an extra adversarial wrap.
-- **`deep-thinking-partner`** Stage 3 COLLIDE → directly applied in Phase 3.
+Every rule the pipeline needs — evidence contract, severity tiers, threat taxonomies (OWASP / CWE / LLM Top 10), banned patterns, posting protocol — is inline in this file. **No external skill is required for the pipeline to work.**
+
+### Optional enhancements (use if installed; pipeline gracefully no-ops otherwise)
+
+- **[`deep-thinking-partner`](https://github.com/mattnowdev/deep-thinking-partner)** — Phase 3 COLLIDE is *inspired by* its Stage 3 pattern (frame collision, forced contrarian, negative space). The inline Phase 3 instructions are sufficient on their own; if `deep-thinking-partner` is available, delegate to it for richer adversarial collision. (Repo public; may be moved/renamed — check the user's GitHub for the current canonical link.)
+- **Anthropic stock `security-review`** (bundled with Claude Code) — a simpler one-shot cybersec pass. *Not* a substitute for the OWASP/CWE/LLM-anchored Cybersec L5 reviewer above; use it only when you want a quick lighter scan in `fast` mode.
+- **[`obra/superpowers`](https://github.com/obra/superpowers)** skills — if installed, `superpowers:dispatching-parallel-agents` formalizes Phase 1 dispatch and `superpowers:verification-before-completion` formalizes Phase 5 evidence checks. The inline instructions cover both; the pack just adds extra rigor.
 
 ## Triggers
 

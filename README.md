@@ -44,6 +44,7 @@ Three modes:
 | 🟡 **FIX-FOLLOWUP** | Architecture / perf / observability concerns; file as separate issue | No |
 | ⚪ **NIT** | Tiny; capped at 3 (rest summarized) | No |
 | 🟣 **PRE-EXISTING** | Bug exists on the base branch; PR exposes but doesn't introduce it | Never |
+| ⚠️🟣 **AMPLIFIED-PRE-EXISTING** | Bug exists on master AND this PR materially widens its blast radius | Never, but flagged in red flags |
 | ⚠️ **RED FLAG** | Damage beyond the diff — own section at top of report | Surfaces in summary |
 
 The 🟣 **pre-existing** tier is the load-bearing scope guardrail. Pre-existing bugs are tagged, not dropped, but never block — they're suggested as separate GitHub issues.
@@ -97,17 +98,19 @@ The skill resolves the diff target by priority:
 
 If the diff exceeds ~3000 LOC, it proposes chunking by subsystem before proceeding.
 
-## Composes with
+## Self-contained — no required dependencies
 
-This skill is designed to compose with, not duplicate, existing primitives:
+Every rule the pipeline needs — evidence contract, severity tiers, threat taxonomies (OWASP Top 10 2021, API Top 10 2023, LLM Top 10 2025, CWE Top 25 2024), 2025-era threat addendum, design principles (SOLID / Demeter / Postel / Hyrum / Chesterton), distributed-systems checklist (8 fallacies / CAP / idempotency), banned patterns, posting protocol — is inline in `SKILL.md`. **You don't need to install anything else for it to work.**
 
-| Existing skill | How `super-review` uses it |
+### Optional enhancements (the pipeline detects + uses them if available)
+
+| Skill | Effect when installed |
 |---|---|
-| `security-review` | Baked into the Cybersec L5 reviewer prompt in Phase 1 |
-| `superpowers:dispatching-parallel-agents` | The dispatch mechanism for Phase 1 |
-| `superpowers:verification-before-completion` | Phase 2 evidence gate + Phase 5 byte-accuracy spot-checks |
-| `superpowers:receiving-code-review` | Recommended downstream — what the *author* does with this report |
-| `deep-thinking-partner` Stage 3 | Phase 3 COLLIDE: contradictions, negative space, forced contrarian |
+| [`deep-thinking-partner`](https://github.com/mattnowdev/deep-thinking-partner) | Phase 3 COLLIDE delegates to its Stage 3 for richer adversarial frame-collision. Otherwise an inline collision pass runs. |
+| Anthropic stock `security-review` (bundled with Claude Code) | Lighter alternative cybersec pass for `fast` mode. Not a substitute for the OWASP/CWE-anchored Cybersec L5 reviewer. |
+| [`obra/superpowers`](https://github.com/obra/superpowers) | `dispatching-parallel-agents` + `verification-before-completion` add extra rigor to Phase 1 / Phase 5. Inline instructions are sufficient without them. |
+
+After receiving this report, authors of the PR may want `superpowers:receiving-code-review` to structure their response.
 
 ## Output format
 
