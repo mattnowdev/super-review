@@ -65,7 +65,7 @@ Build the **scope brief** — pasted into every downstream reviewer prompt:
 - BASE_SHA..HEAD_SHA + LOC stats (additions/deletions/files)
 - File inventory split into: [in-diff-modified] [in-diff-added] [in-diff-deleted]
 - Stack signals: languages, frameworks, ORMs, auth providers detected from package.json / go.mod / etc.
-- Project conventions: CLAUDE.md + REVIEW.md (if present) — top-priority rules quoted
+- **Project conventions** (`CLAUDE.md` + `REVIEW.md` + `AGENTS.md` + `GEMINI.md` if present) — **mandatory read.** Quote EVERY load-bearing rule into the brief verbatim, not summarized. Project rules outrank universal taxonomies when in conflict (e.g. CLAUDE.md says "Polish-first, no emoji, no exclamation points" — those become BLOCKERs even if not in OWASP). The orchestrator MUST surface project rules to every reviewer's prompt; reviewers cite project rules by file:line in CLAUDE.md the same way they cite OWASP IDs.
 - Existing test commands: from package.json scripts / Makefile
 - Related PRD/spec links if referenced in PR body
 - Sub-skill loadout (see below): list of super-review sub-skills whose triggers fire on this diff
@@ -82,6 +82,8 @@ Build the **scope brief** — pasted into every downstream reviewer prompt:
 | `super-review:crypto` | `crypto.create*`, `jsonwebtoken`, `jose`, `bcrypt`, `argon2`, `node:crypto` imports in the diff |
 | `super-review:web-headers` | Response-header setters, middleware files, `next.config.*` headers config, `vercel.json` headers |
 | `super-review:llm-sec` | `openai` / `@anthropic-ai/sdk` / `@ai-sdk/*` / `langchain` / `llamaindex` / pinecone / weaviate / qdrant in deps or diff |
+| `super-review:i18n` | `next-intl` / `react-intl` / `react-i18next` / `i18next` / `lingui` / `@formatjs/*` / `vue-i18n` in deps, OR `locales/`/`messages/`/`i18n/` dir, OR translation JSON/YAML in diff |
+| `super-review:code-smells` | Single-file diff > 150 LOC, new class with > 5 methods, function moves across files, OR explicit `smells` mode |
 
 For each fired trigger, the orchestrator reads the corresponding `skills/<name>/SKILL.md` and appends its anti-pattern catalog to the **Cybersec L5**, **Correctness**, and **Design** reviewer prompts (or only the ones for which the catalog is relevant — e.g. `crypto` → Cybersec only). The brief records which sub-skills were loaded.
 

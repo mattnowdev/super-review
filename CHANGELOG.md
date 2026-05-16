@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.0 — 2026-05-16
+
+Three additions driven by review-quality feedback:
+
+### New sub-skills
+
+- **`super-review:i18n`** — internationalization anti-patterns: hardcoded strings bypassing i18n, locale-key parity drift, broken pluralization (one/many ternaries that fail in Polish/Russian/Arabic), locale-naive date/number/currency formatting, RTL layout bugs, tests asserting on translated strings, missing fallback strategy, concatenated translated fragments, untranslated server error messages, locale-sensitive sorting via `Intl.Collator`. Auto-loads when any i18n library is detected or `locales/`/`messages/`/`i18n/` dir exists.
+
+- **`super-review:code-smells`** — Fowler / refactoring.guru catalog adapted for PR review: Bloaters (Long Method, Large Class, Primitive Obsession, Long Parameter List, Data Clumps), OO Abusers (Switch Statements, Temporary Field, Refused Bequest), Change Preventers (Divergent Change, Shotgun Surgery), Dispensables (Duplicate Code, Dead Code, Speculative Generality, Comments-as-explanation), Couplers (Feature Envy, Inappropriate Intimacy, Message Chains, Middle Man), plus modern additions (Flag Argument, Stringly Typed, Magic Numbers). Auto-loads on refactor-heavy diffs (>150 LOC single file, >5 methods in new class, function moves across files).
+
+### "What good looks like" sections
+
+Every sub-skill (`react`, `nextjs`, `postgres`, `orm`, `crypto`, `web-headers`, `llm-sec`) now ships a positive-pattern section alongside its anti-patterns. The reviewer can both flag absence ("this pattern should be here") and affirm presence in the ✅ Cleared list — buys credibility for the BLOCK findings and helps junior contributors learn the canonical shape. Each section: 4–5 patterns with verbatim good code, why-it-works rationale, and an affirmation prompt one-liner.
+
+### Project-convention emphasis
+
+Phase 0 now **mandatory-reads** `CLAUDE.md` / `REVIEW.md` / `AGENTS.md` / `GEMINI.md` and quotes every load-bearing rule into the scope brief verbatim. Project rules outrank universal taxonomies (OWASP/CWE/etc.) when in conflict — e.g. a project requiring "no emoji" makes emoji a BLOCKER even though no CWE applies. Reviewers cite project rules with file:line precision.
+
+---
+
 ## v1.0.0 — 2026-05-16
 
 **Breaking change**: restructured into a Claude Code plugin with multiple sub-skills.

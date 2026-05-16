@@ -50,6 +50,8 @@ The orchestrator + 7 sub-skills:
 | `super-review:crypto` | Application crypto: RNG, AES-GCM IV reuse, padding oracles, JWT, password hashing, RSA, TLS, key separation | `crypto`/`jose`/`jsonwebtoken`/`bcrypt`/`argon2` in diff |
 | `super-review:web-headers` | CSP / HSTS / CORS / COOP+COEP / Permissions-Policy / SRI / cookies / CHIPS | Middleware / header setters / `next.config` headers |
 | `super-review:llm-sec` | LLM app security depth: indirect prompt injection, output-as-executor, slopsquatting, excessive agency, vector store risks | `openai`/`@anthropic-ai/sdk`/`@ai-sdk/*`/`langchain` etc. in diff |
+| `super-review:i18n` | Internationalization: key parity, ICU pluralization, locale-naive formatting, RTL, error-message localization, test discipline | `next-intl`/`react-intl`/`react-i18next`/`i18next`/`lingui`/`@formatjs/*`/`vue-i18n` in deps, OR `locales/`/`messages/` dirs |
+| `super-review:code-smells` | Fowler / refactoring.guru catalog: Bloaters, OO Abusers, Change Preventers, Dispensables, Couplers, plus Flag Arguments, Stringly Typed, Magic Numbers | Single-file diff >150 LOC, new class >5 methods, function moves across files, or explicit `smells` mode |
 
 ## Severity taxonomy
 
@@ -137,6 +139,12 @@ Single GitHub comment per PR, structure:
 ```
 
 Each finding includes: **file:line range**, **verbatim code quote**, **one-sentence impact**, **one-sentence fix**. Cybersec findings additionally cite **OWASP ID(s) + CWE ID**.
+
+Each sub-skill also ships a **"What good looks like"** section — positive patterns the reviewer can affirm in the ✅ Cleared list, not just antipatterns to flag.
+
+## Project conventions take precedence
+
+Phase 0 reads the project's `CLAUDE.md` / `REVIEW.md` / `AGENTS.md` / `GEMINI.md` (whichever exist) and quotes every load-bearing rule into the scope brief. **Project rules outrank universal taxonomies** when they conflict — e.g. if CLAUDE.md says "Polish-first UI, no emoji, no exclamation points", those become BLOCKERs even though no OWASP/CWE ID exists for them. Reviewers cite project rules with the same precision as OWASP IDs.
 
 ## Banned patterns
 

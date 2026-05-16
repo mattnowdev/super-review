@@ -128,6 +128,57 @@ res.setHeader('Set-Cookie', '_widget=abc; SameSite=None; Secure');
 **Review prompt one-liner:** Verify both XFO and CSP `frame-ancestors` are present and consistent.
 **CWE:** CWE-1021.
 
+## What good looks like
+
+### Strict CSP with nonce + `strict-dynamic` + Trusted Types
+```
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'nonce-{random}' 'strict-dynamic' 'unsafe-inline' https:;
+  base-uri 'none';
+  frame-ancestors 'none';
+  require-trusted-types-for 'script';
+  trusted-types app#html default;
+```
+**Why it works:** Inline scripts forbidden unless they carry the per-request nonce; loaded scripts can transitively load more (strict-dynamic) but only those they vouch for; DOM-XSS sinks reject string inputs; clickjacking + base-href injection closed.
+**Affirm:** CSP pins nonce + strict-dynamic, declares base-uri + frame-ancestors explicitly, and enforces Trusted Types.
+
+### `__Host-` prefixed session cookie
+```
+Set-Cookie: __Host-session=<token>; Path=/; Secure; HttpOnly; SameSite=Lax
+```
+**Why it works:** `__Host-` enforces no `Domain` attribute, `Path=/`, `Secure`; sibling subdomain cannot set/overwrite; HttpOnly blocks `document.cookie` reads; SameSite mitigates CSRF.
+**Affirm:** Every session/auth cookie uses `__Host-` prefix, `Secure`, `HttpOnly`, and explicit `SameSite`.
+
+### HSTS preload-ready
+```
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+```
+**Why it works:** 2-year `max-age` survives intermittent visits; `includeSubDomains` covers the whole org; eligible for `hstspreload.org` so the first visit is also HTTPS-only.
+**Affirm:** HSTS is `max-age ≥ 31536000` + `includeSubDomains` + `preload`.
+
+### CORS allow-list (exact match, never reflect)
+```ts
+const ALLOWED = new Set(['https://app.example.com', 'https://admin.example.com']);
+const origin = req.headers.origin ?? '';
+if (ALLOWED.has(origin)) {
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+}
+```
+**Why it works:** Only known origins receive credentialed CORS responses; `Vary: Origin` prevents cache poisoning; no wildcard with credentials.
+**Affirm:** Every CORS handler matches `Origin` against a static allow-list before echoing it; `Vary: Origin` is always set.
+
+### Cross-origin isolated with COOP + COEP
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: credentialless
+Cross-Origin-Resource-Policy: same-origin
+```
+**Why it works:** Enables `SharedArrayBuffer` and high-res timers safely; blocks tab-nabbing via `window.opener`; `credentialless` mode is less restrictive than `require-corp` for third-party resources.
+**Affirm:** Apps using SharedArrayBuffer / precise timers set COOP `same-origin` + COEP `credentialless` (or `require-corp`).
+
 ## Sources
 - [MDN — CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP)
 - [MDN — require-trusted-types-for](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/require-trusted-types-for)

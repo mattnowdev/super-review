@@ -145,6 +145,61 @@ try {
 **Fix:** `if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025')`.
 **Review prompt one-liner:** Post-Prisma-6, no reference to `NotFoundError` — catch `P2025` on `PrismaClientKnownRequestError` instead.
 
+## What good looks like
+
+### Explicit projection on every read
+```ts
+const user = await prisma.user.findUnique({
+  where: { id },
+  select: { id: true, email: true, name: true }, // no passwordHash, no mfaSecret
+});
+```
+**Why it works:** Sensitive fields can't leak through `res.json(user)`; schema additions don't auto-widen API contracts.
+**Affirm:** Every ORM read for an API response declares an explicit `select`.
+
+### Transaction handle threaded through every helper
+```ts
+async function awardPoints(tx: Tx, userId: number, points: number) {
+  return tx.update(users).set({ points: sql`points + ${points}` }).where(eq(users.id, userId));
+}
+await db.transaction(async (tx) => {
+  await tx.insert(orders).values(o);
+  await awardPoints(tx, o.userId, 10);  // same tx
+});
+```
+**Why it works:** Helpers cannot accidentally write outside the transaction; rollback semantics correct; no global `db` capture.
+**Affirm:** Every write helper that may run in a transaction takes `tx` as the first arg.
+
+### Request-scoped MikroORM EntityManager
+```ts
+// middleware:
+app.use((req, res, next) => RequestContext.create(em, next));
+// handler:
+app.get('/users/:id', async (req, res) => {
+  const em = RequestContext.getEntityManager()!; // fresh fork, per-request identity map
+  res.json(await em.findOne(User, req.params.id));
+});
+```
+**Why it works:** Identity map is request-scoped; one request's loaded entities don't leak into the next; memory doesn't grow unboundedly.
+**Affirm:** MikroORM handlers obtain `em` via `RequestContext` or `em.fork()`, never from a module singleton.
+
+### Tagged-template parameter binding for raw SQL
+```ts
+const rows = await prisma.$queryRaw`
+  SELECT id, email FROM users WHERE email = ${email} AND tenant_id = ${tenantId}
+`;
+```
+**Why it works:** Prisma binds `${email}` and `${tenantId}` as parameters; SQL injection impossible by construction; `$queryRawUnsafe` not used.
+**Affirm:** All raw SQL uses the tagged-template form (`$queryRaw`, `sql\`...\``), never string-concat into `$queryRawUnsafe`/`manager.query`.
+
+### Soft-delete enforced at the database view layer
+```sql
+CREATE VIEW active_users AS SELECT * FROM users WHERE deleted_at IS NULL;
+-- ORM points at the view, not the table
+```
+**Why it works:** Single source of truth; impossible to forget the predicate on a join; RLS-compatible.
+**Affirm:** Soft-delete is enforced at the view or RLS layer, not as a per-query ORM filter that joins can bypass.
+
 ## Sources
 - [Prisma — v6 upgrade guide](https://www.prisma.io/docs/orm/more/upgrade-guides/upgrading-versions/upgrading-to-prisma-6)
 - [MikroORM — identity map](https://mikro-orm.io/docs/identity-map)

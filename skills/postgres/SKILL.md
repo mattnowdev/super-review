@@ -143,6 +143,57 @@ UPDATE events SET processed = true WHERE batch_id = $1;
 **Fix:** Add a PK or `REPLICA IDENTITY USING INDEX` on a unique, NOT NULL index; reserve `FULL` for low-write tables.
 **Review prompt one-liner:** Any table in a logical publication needs a PK or an explicit `REPLICA IDENTITY USING INDEX` — never default `FULL` on a hot table.
 
+## What good looks like
+
+### `INSERT ... ON CONFLICT` for race-safe upsert
+```sql
+INSERT INTO inventory (sku, qty) VALUES ($1, $2)
+ON CONFLICT (sku) DO UPDATE SET qty = inventory.qty + EXCLUDED.qty
+RETURNING qty;
+```
+**Why it works:** Single atomic statement; concurrent inserts of the same SKU serialize correctly; no MERGE unique-violation pitfall.
+**Affirm:** Upserts use `INSERT ... ON CONFLICT`, not `SELECT` + `INSERT`-or-`UPDATE` round-trips.
+
+### `FOR NO KEY UPDATE` for FK-existence gates
+```sql
+BEGIN;
+SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE;
+INSERT INTO orders (user_id, total) VALUES ($1, $2);
+COMMIT;
+```
+**Why it works:** Prevents row deletion / PK change but doesn't block concurrent profile updates; user row stays a non-hotspot.
+**Affirm:** Locks taken only to gate FK validity use `FOR NO KEY UPDATE`, never `FOR UPDATE`.
+
+### `pg_advisory_xact_lock` for app-level mutexes under pgBouncer
+```sql
+SELECT pg_advisory_xact_lock(hashtext('rebuild_index'));
+-- work happens; lock released automatically on COMMIT
+```
+**Why it works:** Transaction-scoped lock survives pgBouncer transaction-pooling; auto-released; no manual `pg_advisory_unlock` (which would land on a different backend).
+**Affirm:** Every advisory lock in a project using pgBouncer is `_xact_lock` variant.
+
+### `SERIALIZABLE` wrapped in a retry helper
+```ts
+async function txWithRetry<T>(fn: (tx: Tx) => Promise<T>, attempts = 4): Promise<T> {
+  for (let i = 0; i < attempts; i++) {
+    try { return await prisma.$transaction(fn, { isolationLevel: 'Serializable' }); }
+    catch (e: any) { if (e.code !== '40001' && e.code !== '40P01') throw e; await sleep(50 * 2 ** i); }
+  }
+  throw new Error('tx retries exhausted');
+}
+```
+**Why it works:** Serialization failures retry transparently with exponential backoff; callers see consistent results, not random 500s.
+**Affirm:** All SERIALIZABLE transactions go through a retry helper that catches `40001`/`40P01`.
+
+### NOT NULL column added as 3 separate migrations (zero-downtime)
+```
+migration_1: ALTER TABLE ... ADD COLUMN status text;  -- nullable, default null
+migration_2: backfill in batches: UPDATE ... SET status = 'pending' WHERE status IS NULL;
+migration_3: ALTER TABLE ... ALTER COLUMN status SET NOT NULL, SET DEFAULT 'pending';
+```
+**Why it works:** Each step is independently deployable; no long-running ACCESS EXCLUSIVE lock from `SET NOT NULL` on a populated table; rollback-safe.
+**Affirm:** NOT NULL added to existing table is split into nullable-add → backfill → set-not-null.
+
 ## Sources
 - [PostgreSQL — `FOR UPDATE` / `FOR NO KEY UPDATE`](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE)
 - [PostgreSQL 17 — MERGE concurrency note](https://www.postgresql.org/docs/17/sql-merge.html)

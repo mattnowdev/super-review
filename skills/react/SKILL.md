@@ -161,7 +161,58 @@ useEffect(() => {
 **Fix:** Hoist the handler to a named const within the effect and pass it to both add/remove. Better: `useSyncExternalStore` for window/media-query subscriptions.
 **Review prompt one-liner:** Does every `addEventListener` cleanup pass the same function reference (not an inline arrow) to `removeEventListener`?
 
+## What good looks like
+
+### Effect with abort + cleanup
+```tsx
+useEffect(() => {
+  const ac = new AbortController();
+  fetch(url, { signal: ac.signal })
+    .then(r => r.json())
+    .then(d => setData(d))
+    .catch(e => { if (e.name !== 'AbortError') reportError(e); });
+  return () => ac.abort();
+}, [url]);
+```
+**Why it works:** Abort propagates on dep change + unmount; AbortError silently dropped; no stale write race.
+**Affirm:** Every async effect ties an `AbortController` to cleanup.
+
+### Server-content composition via `children` prop
+```tsx
+// ServerLayout.tsx (no 'use client')
+<InteractiveShell>
+  <ExpensiveServerTree />   {/* stays on server */}
+</InteractiveShell>
+```
+**Why it works:** `'use client'` boundary stays at the shell; child tree renders on the server and is passed in as already-rendered children. Bundle stays small.
+**Affirm:** Client components receive server content via `children` prop, not by importing server modules.
+
+### External subscription via `useSyncExternalStore`
+```tsx
+const width = useSyncExternalStore(
+  cb => { window.addEventListener('resize', cb); return () => window.removeEventListener('resize', cb); },
+  () => window.innerWidth,
+  () => 1024 // SSR snapshot
+);
+```
+**Why it works:** Concurrent-mode safe; correct tearing semantics; clean cleanup; same-reference handler.
+**Affirm:** Browser-API subscriptions (window, media query, network status) use `useSyncExternalStore`, not raw `useEffect` + `addEventListener`.
+
+### Discriminated union for component state machine
+```tsx
+type State =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'success'; data: User }
+  | { status: 'error'; error: Error };
+
+if (state.status === 'success') return <Profile user={state.data} />; // TS narrows
+```
+**Why it works:** Impossible states cannot be represented; exhaustive `switch` proven by compiler with `assertNever`.
+**Affirm:** Component state with multiple modes is modeled as a discriminated union, not separate booleans (`isLoading`, `isError`, `hasData`).
+
 ## Sources
 - [react.dev — use() hook](https://react.dev/reference/react/use)
 - [react.dev — useActionState](https://react.dev/reference/react/useActionState)
 - [react.dev — useEffectEvent](https://react.dev/reference/react/useEffectEvent)
+- [react.dev — useSyncExternalStore](https://react.dev/reference/react/useSyncExternalStore)

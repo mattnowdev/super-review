@@ -154,7 +154,71 @@ app/
 **Fix:** Exactly one `priority` per route — the actual LCP image. Use `strategy="afterInteractive"` for analytics; reserve `beforeInteractive` for polyfills or consent SDKs that genuinely must run pre-hydration.
 **Review prompt one-liner:** Is exactly one `<Image priority>` per route, and does every `<Script strategy>` match its real loading need?
 
+## What good looks like
+
+### Server Action with auth + Zod first lines
+```tsx
+'use server';
+const InputSchema = z.object({ id: z.string().uuid(), title: z.string().min(1).max(200) }).strict();
+export async function updatePost(formData: FormData) {
+  const session = await auth();
+  if (!session) throw new HttpError(401);
+  const input = InputSchema.parse(Object.fromEntries(formData));
+  if (!(await canEdit(session, input.id))) throw new HttpError(403);
+  await db.post.update({ where: { id: input.id }, data: { title: input.title } });
+  revalidateTag(`post:${input.id}`);
+}
+```
+**Why it works:** Auth + authz + schema validation are first lines, not buried; strict schema rejects extra fields; tag invalidation paired with cached read.
+**Affirm:** Every `'use server'` function opens with auth → input parse → authz → mutation → revalidate.
+
+### `cacheTag` paired with `updateTag` (Next 16) or `revalidateTag` (Next 15)
+```tsx
+// read:
+async function getPost(id: string) {
+  'use cache';
+  cacheTag(`post:${id}`);
+  return db.post.findUnique({ where: { id } });
+}
+// write:
+await db.post.update(...);
+updateTag(`post:${id}`);  // or revalidateTag in Next 15
+```
+**Why it works:** Mutation invalidates by the same tag the cached read declared; no stale data after write.
+**Affirm:** Every cached read declares a `cacheTag`; every mutation calls `updateTag`/`revalidateTag` for every tag it invalidates.
+
+### Tight middleware matcher
+```ts
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health).*)'],
+};
+```
+**Why it works:** Static assets + health checks skip the middleware; no per-request DB hit on `/favicon.ico`.
+**Affirm:** Middleware has an explicit `matcher` that excludes static and health-check paths.
+
+### `server-only` import for data access modules
+```ts
+// db/users.ts
+import 'server-only';
+export async function getUser(id) { return db.user.findUnique({ where: { id } }); }
+```
+**Why it works:** Build fails if any client component imports this file by mistake; secrets and DB driver never leak to the client bundle.
+**Affirm:** Every server-only module declares `import 'server-only'` at the top.
+
+### Minimal projection across the RSC boundary
+```tsx
+// server component:
+const user = await db.user.findUnique({
+  where: { id },
+  select: { id: true, name: true, avatarUrl: true }, // explicit projection
+});
+return <ProfileClient user={user} />;
+```
+**Why it works:** Sensitive fields (`hashedPassword`, `stripeCustomerId`) never serialize to the client RSC payload.
+**Affirm:** Every Server→Client prop is a hand-picked `select` projection, not the full DB row.
+
 ## Sources
 - [Next.js 15 release notes](https://nextjs.org/blog/next-15)
 - [Next.js Cache Components docs (`use cache`, `cacheLife`, `cacheTag`, `updateTag`)](https://nextjs.org/docs/app/getting-started/caching)
 - [Next.js caching without cache components](https://nextjs.org/docs/app/guides/caching-without-cache-components)
+- [React — `server-only` package](https://www.npmjs.com/package/server-only)

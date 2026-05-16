@@ -146,6 +146,62 @@ catch (e) { logger.error('db connect failed', { dsn: process.env.DATABASE_URL, e
 **Review prompt one-liner:** Verify every logger has a secret-redaction transport configured and that no log payload includes raw `process.env`, `req.headers`, or connection strings.
 **CWE:** CWE-532, CWE-209.
 
+## What good looks like
+
+### CSPRNG for every secret-bearing identifier
+```ts
+import { randomBytes } from 'node:crypto';
+const token = randomBytes(32).toString('base64url'); // 256 bits, URL-safe
+// browser/edge:
+const buf = new Uint8Array(32);
+crypto.getRandomValues(buf);
+```
+**Why it works:** `randomBytes` / `getRandomValues` sources from the OS CSPRNG; state cannot be recovered; 256-bit entropy is well above any guessing budget.
+**Affirm:** Every token / session id / reset code / share link uses `crypto.randomBytes` (Node) or `crypto.getRandomValues` (Web), never `Math.random()` or `Date.now()`.
+
+### Constant-time comparison for secrets
+```ts
+import { timingSafeEqual } from 'node:crypto';
+const a = Buffer.from(received, 'hex'), b = Buffer.from(expected, 'hex');
+if (a.length !== b.length || !timingSafeEqual(a, b)) return res.status(401).end();
+```
+**Why it works:** Comparison time is independent of where bytes diverge; statistical timing attacks cannot recover the secret byte-by-byte.
+**Affirm:** Every HMAC / signature / session-token / password-hash comparison uses `timingSafeEqual` (or language equivalent: `hmac.compare_digest` / `subtle.ConstantTimeCompare`).
+
+### Argon2id with documented parameters
+```ts
+import argon2 from 'argon2';
+const hash = await argon2.hash(password, {
+  type: argon2.argon2id,
+  memoryCost: 65536,   // 64 MiB
+  timeCost: 3,
+  parallelism: 1,
+});
+```
+**Why it works:** Argon2id is the OWASP default; explicit parameters mean cost can be tuned in one place; memory cost defeats GPU/ASIC attackers.
+**Affirm:** Password hashing uses Argon2id with `memoryCost ≥ 19456` and `timeCost ≥ 2`, OR bcrypt with `cost ≥ 12`, parameters committed to code.
+
+### HKDF for purpose-specific subkeys
+```ts
+import { hkdfSync } from 'node:crypto';
+const enc = hkdfSync('sha256', master, salt, 'enc-v1', 32);
+const mac = hkdfSync('sha256', master, salt, 'mac-v1', 32);
+```
+**Why it works:** One stored secret; subkeys are independent for distinct purposes (encryption vs MAC); compromise of one doesn't affect the other.
+**Affirm:** Any code that needs > 1 key uses HKDF-derived subkeys from a single master, never reuses one key across purposes.
+
+### JWT verify with explicit algorithm + audience + issuer pin
+```ts
+const payload = jwt.verify(token, publicKey, {
+  algorithms: ['RS256'],
+  audience: 'api.example.com',
+  issuer: 'https://idp.example.com',
+  clockTolerance: 30,
+});
+```
+**Why it works:** Defeats alg confusion (HS256 forged using RS256 public key); rejects tokens issued for other services; clock-tolerance window absorbs benign skew.
+**Affirm:** Every `jwt.verify` pins `algorithms`, `audience`, `issuer`; no `jwt.decode` in any auth path.
+
 ## Sources
 - [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
 - [NIST SP 800-38D — GCM](https://nvlpubs.nist.gov/nistpubs/legacy/sp/nistspecialpublication800-38d.pdf)
