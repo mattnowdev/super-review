@@ -1,0 +1,30 @@
+diff --git a/client/src/components/ShareModal.tsx b/client/src/components/ShareModal.tsx
+index a1b2c3d..e4f5g6h 100644
+--- a/client/src/components/ShareModal.tsx
++++ b/client/src/components/ShareModal.tsx
+@@ -19,6 +19,11 @@ export function ShareModal({ bookId, onClose }: ShareModalProps) {
+         <button onClick={handleCopy}>{t("share.modal.copyLink")}</button>
+       </div>
+
++      <div className="row">
++        <input type="checkbox" id="book-club-mode" />
++        <label htmlFor="book-club-mode">{t("share.modal.bookClubMode")}</label>
++      </div>
++
+       <div className="actions">
+         <button onClick={onClose}>{t("common.cancel")}</button>
+         <button onClick={onClose}>{t("common.confirm")}</button>
+diff --git a/locales/pl.json b/locales/pl.json
+index b1c2d3e..f4a5b6c 100644
+--- a/locales/pl.json
++++ b/locales/pl.json
+@@ -12,7 +12,8 @@
+   "share": {
+     "modal": {
+       "title": "Udostępnij książkę",
+-      "copyLink": "Skopiuj link"
++      "copyLink": "Skopiuj link",
++      "bookClubMode": "Tryb klubu książki"
+     }
+   }
+ }

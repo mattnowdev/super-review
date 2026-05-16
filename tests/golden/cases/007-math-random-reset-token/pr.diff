@@ -1,0 +1,20 @@
+diff --git a/backend/src/auth/passwordReset.ts b/backend/src/auth/passwordReset.ts
+index e69de29..a7b3c4d 100644
+--- a/backend/src/auth/passwordReset.ts
++++ b/backend/src/auth/passwordReset.ts
+@@ -1 +1,14 @@
+-// TODO: implement password reset
++import { db } from "../db";
++
++function generateResetToken(): string {
++  return Math.random().toString(36).slice(2);
++}
++
++export async function requestPasswordReset(userId: string): Promise<string> {
++  const token = generateResetToken();
++  await db.user.update({
++    where: { id: userId },
++    data: { resetToken: token },
++  });
++  return token;
++}

@@ -1,0 +1,31 @@
+{
+  "case_id": "008-i18n-key-parity-drift",
+  "summary": "New translation key share.modal.bookClubMode added to pl.json and consumed via t() in ShareModal.tsx, but missing from sibling locale files en.json and de.json. English and German users will render the raw key (or a Polish fallback) instead of a localized string.",
+  "must_find": [
+    {
+      "severity": "FIX-BEFORE-MERGE",
+      "skill": "i18n",
+      "file": "locales/en.json",
+      "alternate_files": ["locales/de.json", "locales/pl.json"],
+      "pattern_keyword": "key parity",
+      "secondary_keywords": ["missing", "translation", "bookClubMode", "locale"],
+      "note": "Reviewer may cite either the pl.json line where the new key was added, or the en.json / de.json files where it is absent. Any of the three file references satisfies the finding as long as the missing-key gap is named."
+    }
+  ],
+  "must_not_find": [
+    {
+      "reason": "The ShareModal.tsx component change (new checkbox row using t('share.modal.bookClubMode')) is correct in isolation. The component is the consumer; the bug is in the locale files. Reviewer must not flag the component as the source of the bug.",
+      "file": "client/src/components/ShareModal.tsx",
+      "pattern_keyword": "component"
+    },
+    {
+      "reason": "This is a user-visible UX/correctness regression, not a security, data-loss, or auth bypass issue. Must not be escalated to BLOCK.",
+      "severity_not_allowed": "BLOCK"
+    }
+  ],
+  "tolerance": {
+    "extra_findings_allowed": 1,
+    "extra_must_be": ["NIT", "FIX-FOLLOWUP"],
+    "note": "Reviewer may legitimately surface one additional FIX-FOLLOWUP or NIT recommending a CI key-parity check (jq diff, i18next-parser, lokalise sync, etc.) so this class of bug is caught automatically in the future. One such finding is allowed and welcome."
+  }
+}

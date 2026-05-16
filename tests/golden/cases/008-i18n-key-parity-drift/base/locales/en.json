@@ -1,0 +1,18 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirm": "Confirm"
+  },
+  "errors": {
+    "notFound": "Not found",
+    "unauthorized": "Access denied"
+  },
+  "share": {
+    "modal": {
+      "title": "Share book",
+      "copyLink": "Copy link"
+    }
+  }
+}

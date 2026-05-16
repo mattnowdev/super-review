@@ -1,0 +1,32 @@
+{
+  "case_id": "005-react-useeffect-race",
+  "summary": "New useEffect in UserProfile.tsx fetches /api/user/${userId} on userId change with no AbortController or ignore-flag cleanup; in-flight responses can resolve out of order and overwrite state with stale data, showing the wrong user's profile.",
+  "must_find": [
+    {
+      "severity": "FIX-BEFORE-MERGE",
+      "skill": "react",
+      "file": "frontend/src/components/UserProfile.tsx",
+      "line_range": [16, 20],
+      "pattern_keyword": "race",
+      "secondary_keywords": ["abort", "stale", "cleanup", "AbortController", "ignore"],
+      "user_impact": "wrong user data rendered when userId prop changes mid-flight"
+    }
+  ],
+  "must_not_find": [
+    {
+      "reason": "No security issue exists in this diff. There is no token leak, no XSS sink, no auth bypass, no SSRF — just a client-side fetch of an already-authorized endpoint. Reviewer must NOT escalate to a cybersec finding.",
+      "file": "frontend/src/components/UserProfile.tsx",
+      "pattern_keyword": "cybersec"
+    },
+    {
+      "reason": "The component renders a single <section> with a <h2> and a <p>. There is no list, no .map(), no array children. Reviewer must NOT hallucinate a 'missing key prop' finding.",
+      "file": "frontend/src/components/UserProfile.tsx",
+      "pattern_keyword": "missing key prop"
+    }
+  ],
+  "tolerance": {
+    "extra_findings_allowed": 1,
+    "extra_must_be": ["NIT"],
+    "note": "Reviewer may legitimately surface one NIT (e.g. missing loading/error UI state, untyped fetch error path, or suggestion to extract to a custom hook / data-fetching library). One such adjacent NIT is allowed."
+  }
+}

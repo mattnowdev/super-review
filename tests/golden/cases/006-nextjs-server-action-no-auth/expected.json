@@ -1,0 +1,62 @@
+{
+  "case_id": "006-nextjs-server-action-no-auth",
+  "summary": "New 'use server' module adds a deletePost(formData) Server Action that calls db.post.delete directly with no auth check, no ownership check, and no input validation. Any caller with the action ID can delete any post — Server Actions are publicly callable HTTP endpoints, unguessable action IDs are not an authorization mechanism.",
+  "must_find": [
+    {
+      "severity": "BLOCK",
+      "skill": "cybersec",
+      "file": "app/posts/actions.ts",
+      "line_range": [6, 14],
+      "pattern_keyword": "Missing Authorization",
+      "secondary_keywords": [
+        "auth",
+        "session",
+        "ownership",
+        "Server Action",
+        "use server",
+        "publicly callable",
+        "action ID",
+        "BOLA",
+        "IDOR"
+      ],
+      "owasp_or_cwe": ["A01", "CWE-862", "CWE-639"]
+    },
+    {
+      "severity": "BLOCK",
+      "skill": "nextjs",
+      "file": "app/posts/actions.ts",
+      "line_range": [1, 14],
+      "pattern_keyword": "use server",
+      "secondary_keywords": [
+        "Server Action",
+        "public endpoint",
+        "HTTP POST",
+        "action ID",
+        "auth check",
+        "top of body"
+      ]
+    }
+  ],
+  "must_not_find": [
+    {
+      "reason": "The existing app/posts/page.tsx is unchanged in this diff. Reviewer must not invent findings on files outside the diff scope (e.g. complaining that the read query lacks an auth check is out of scope — diff-scoped review only).",
+      "file": "app/posts/page.tsx"
+    },
+    {
+      "reason": "The missing auth check on a publicly-callable destructive Server Action is BLOCK-class. Reviewer must not demote this to FIX-FOLLOWUP under any 'low traffic' or 'unguessable action ID' reasoning. Unguessable != authorized.",
+      "file": "app/posts/actions.ts",
+      "severity": "FIX-FOLLOWUP",
+      "pattern_keyword": "auth"
+    },
+    {
+      "reason": "Reviewer must not claim the action is 'safe because no client component imports it yet' — Server Actions exported from a 'use server' module are addressable independent of client references; this misconception is exactly the bug class.",
+      "file": "app/posts/actions.ts",
+      "pattern_keyword": "no client imports"
+    }
+  ],
+  "tolerance": {
+    "extra_findings_allowed": 1,
+    "extra_must_be": ["FIX-BEFORE-MERGE"],
+    "note": "A single FIX-BEFORE-MERGE finding about missing Zod (or equivalent) validation on formData.get('id') — which is typed FormDataEntryValue | null and passed straight to Prisma — is an acceptable adjacent finding. It is a real bug at a lower severity tier than the BLOCK on missing authorization. Reviewer must NOT merge this into the BLOCK finding nor escalate it to BLOCK on its own."
+  }
+}

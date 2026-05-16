@@ -440,6 +440,50 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 
 ### Posting rules
 
+### Machine-readable output (`--json-output <path>`)
+
+When invoked with `/super-review:run --json-output <path> ...` (or `--json-output -` for stdout), the orchestrator writes a JSON document with the full findings list **in addition to** posting the GitHub comment / inline threads. Schema:
+
+```jsonc
+{
+  "version": "1",
+  "verdict": "Ready to merge" | "Needs attention" | "Needs work",
+  "mode": "full" | "fast" | "sec" | "smells",
+  "pr": { "owner": "...", "repo": "...", "number": 42, "base_sha": "...", "head_sha": "..." },
+  "config_loaded": true,                          // .super-review.json was found and parsed
+  "sub_skills_loaded": ["typescript", "react", "nextjs"],
+  "phase_timings_ms": { "0": 12000, "1": 242000, ... },
+  "estimated_cost_usd": 1.69,
+  "actual_cost_usd": 1.84,                        // sum of per-call usage
+  "findings": [
+    {
+      "id": "unique-stable-id-for-cross-pr-memory",
+      "severity": "BLOCK" | "FIX-BEFORE-MERGE" | "FIX-FOLLOWUP" | "NIT" | "RED-FLAG",
+      "skill": "cybersec" | "react" | "...",
+      "scope": "in-diff" | "pre-existing" | "amplified-pre-existing",
+      "file": "backend/src/server/hooks/registerHooks.ts",
+      "line": 21 | [20, 22],                       // single line OR range
+      "body": "<the full finding text — same prose that appears in the GitHub thread>",
+      "code_quote": "...verbatim code citation...",
+      "owasp": ["A09"],                            // present on cybersec findings
+      "cwe": ["CWE-532"],                          // present on cybersec findings
+      "fix_summary": "Export sanitizeUrl from a shared util; apply at the access-log boundary."
+    }
+  ],
+  "cleared": ["string list of what was checked and found clean"],
+  "pre_existing_issues_filed": ["#142", "#143"]   // if autoFileIssues: true
+}
+```
+
+Consumers:
+- **golden-PR harness `auto` mode** — captures this file to score against `expected.json`
+- **CI dashboards** — pipe `verdict` + `findings` into custom reporters / Slack notifiers
+- **Cross-PR memory writer** — uses `findings[].id` as the stable key into `history.jsonl`
+
+If `--json-output` is unset, behavior is unchanged from v2.0 / v2.1.
+
+### Posting rules
+
 **Preferred: inline review threads.** Findings are posted as **per-line inline review threads** via:
 
 ```

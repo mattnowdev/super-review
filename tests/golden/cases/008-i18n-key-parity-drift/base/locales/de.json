@@ -1,0 +1,18 @@
+{
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "confirm": "Bestätigen"
+  },
+  "errors": {
+    "notFound": "Nicht gefunden",
+    "unauthorized": "Zugriff verweigert"
+  },
+  "share": {
+    "modal": {
+      "title": "Buch teilen",
+      "copyLink": "Link kopieren"
+    }
+  }
+}

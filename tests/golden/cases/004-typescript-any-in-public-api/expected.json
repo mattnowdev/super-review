@@ -1,0 +1,37 @@
+{
+  "case_id": "004-typescript-any-in-public-api",
+  "summary": "Public handleStripeWebhook signature widened from StripeWebhookEvent (discriminated union) to any; downstream charge.refunded branch now reads event.data.object.amount and passes it to formatAmount, but in the original typed model that field was number | null — so null / 100 silently yields 0 at runtime.",
+  "must_find": [
+    {
+      "severity": "FIX-BEFORE-MERGE",
+      "skill": "typescript",
+      "file": "backend/src/webhooks/stripeWebhookService.ts",
+      "line_range": [37, 39],
+      "pattern_keyword": "any",
+      "secondary_keywords": ["unknown", "discriminated union", "StripeWebhookEvent", "narrowing"],
+      "note": "Reviewer must call out that the public boundary lost its type contract; correct fix is `unknown` + zod/io-ts parse, or extending the existing union. Bonus credit if reviewer also flags the downstream `formatAmount(amount, ...)` consumer at ~line 52 as the concrete bug the lost type would have caught (charge.refunded.amount is number | null)."
+    }
+  ],
+  "must_not_find": [
+    {
+      "reason": "Pre-existing typed helpers isChargeRefunded and formatAmount are correct; reviewer must not flag them as broken or suggest rewriting them — only the signature widening and the unsafe consumer are PR-introduced.",
+      "file": "backend/src/webhooks/stripeWebhookService.ts",
+      "pattern_keyword": "formatAmount implementation"
+    },
+    {
+      "reason": "`any` in a public boundary is a contract bug, not a security or data-corruption bug on its own. Reviewer must not escalate to BLOCK.",
+      "file": "backend/src/webhooks/stripeWebhookService.ts",
+      "severity": "BLOCK"
+    },
+    {
+      "reason": "The justifying comment 'support legacy v1 webhook payloads' is not a green light. Reviewer must not accept it as sufficient rationale and downgrade the finding to NIT.",
+      "file": "backend/src/webhooks/stripeWebhookService.ts",
+      "pattern_keyword": "legacy v1"
+    }
+  ],
+  "tolerance": {
+    "extra_findings_allowed": 1,
+    "extra_must_be": ["FIX-FOLLOWUP", "NIT"],
+    "note": "Reviewer may legitimately surface a FIX-FOLLOWUP suggesting runtime schema validation (zod/io-ts) at the webhook ingress, or a NIT about the misleading log key 'charge total' vs Stripe's actual semantics. One such adjacency finding is allowed."
+  }
+}

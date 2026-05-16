@@ -1,0 +1,27 @@
+diff --git a/backend/src/webhooks/stripeWebhookService.ts b/backend/src/webhooks/stripeWebhookService.ts
+index a1b2c3d..e4f5g6h 100644
+--- a/backend/src/webhooks/stripeWebhookService.ts
++++ b/backend/src/webhooks/stripeWebhookService.ts
+@@ -34,8 +34,9 @@ export function formatAmount(amount: number, currency: string): string {
+   return `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+ }
+
++// Loosened to support legacy v1 webhook payloads from the old account.
+ export async function handleStripeWebhook(
+-  event: StripeWebhookEvent,
++  event: any,
+ ): Promise<void> {
+   if (event.type === "payment_intent.succeeded") {
+     const { id, amount, currency } = event.data.object;
+@@ -47,8 +48,9 @@ export async function handleStripeWebhook(
+     return;
+   }
+
+-  if (isChargeRefunded(event)) {
+-    const { id, amount_refunded, currency } = event.data.object;
++  if (event.type === "charge.refunded") {
++    const { id, amount, amount_refunded, currency } = event.data.object;
++    logger.info({ id, gross: formatAmount(amount, currency) }, "charge total");
+     logger.info(
+       { id, refunded: formatAmount(amount_refunded, currency) },
+       "refund ok",

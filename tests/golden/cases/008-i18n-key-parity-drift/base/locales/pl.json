@@ -1,0 +1,18 @@
+{
+  "common": {
+    "save": "Zapisz",
+    "cancel": "Anuluj",
+    "delete": "Usuń",
+    "confirm": "Potwierdź"
+  },
+  "errors": {
+    "notFound": "Nie znaleziono",
+    "unauthorized": "Brak dostępu"
+  },
+  "share": {
+    "modal": {
+      "title": "Udostępnij książkę",
+      "copyLink": "Skopiuj link"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+diff --git a/app/posts/actions.ts b/app/posts/actions.ts
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/app/posts/actions.ts
+@@ -0,0 +1,17 @@
++"use server";
++
++import { revalidatePath } from "next/cache";
++import { db } from "@/lib/db";
++
++export async function deletePost(formData: FormData) {
++  const id = formData.get("id") as string;
++
++  await db.post.delete({
++    where: { id },
++  });
++
++  revalidatePath("/posts");
++
++  return { ok: true };
++}
++

@@ -1,5 +1,59 @@
 # Changelog
 
+## v2.2.0 — 2026-05-16
+
+Three meaningful additions: machine-readable JSON output flag, real working semantic-diff helper (TS/JS), and 5 more golden cases.
+
+### Orchestrator: `--json-output <path>`
+
+`/super-review:run --json-output <path> ...` writes a structured JSON document with the full findings list **in addition to** posting GitHub comments / inline threads. Use `--json-output -` for stdout.
+
+Schema covers verdict, mode, PR identification, loaded config + sub-skills, phase timings, estimated + actual cost, per-finding records with stable IDs (for cross-PR memory), severity, scope, file:line, body, code quote, OWASP / CWE IDs, fix summary. Plus cleared list and auto-filed pre-existing issue numbers.
+
+Consumers:
+- Golden-PR harness `auto` mode → captures + scores against `expected.json`
+- CI dashboards → pipe verdict + findings to Slack / custom reporters
+- Cross-PR memory writer → uses stable `id` field as key into `history.jsonl`
+
+If `--json-output` unset, behavior unchanged from v2.1.
+
+### Semantic-diff helper — minimal working implementation
+
+`helpers/semantic-diff/index.mjs` — pure Node, zero `npm install` required. Conforms to the [Phase 0.5 spec](./references/semantic-diff-helper.md).
+
+**Coverage (this release):** TypeScript / JavaScript files get full symbol extraction (top-level function declarations, arrow consts, classes + methods, type aliases, interfaces, imports diff, route handler endpoints for Fastify / Express / Next.js). Other languages get a language-breakdown tally; no symbol-level diff yet.
+
+**Approach:** regex-based AST-lite. Limitations honestly documented in `helpers/semantic-diff/README.md` (no decorators, no destructured imports, end-line precision is start-line-only, caller search via grep). Upgrade paths documented: ts-morph (TS-only, full fidelity) or web-tree-sitter (multi-language WASM).
+
+**Smoke-tested against seed cases:**
+- Case 001 (hook addition inside existing function body) → correctly reports no top-level symbol changes
+- Case 006 (Server Action — new exported function in a new file) → correctly extracts `deletePost` with `diff_kind: "added"`, signature, line number, plus added imports `revalidatePath` and `db`
+
+**Wire it up** in `.super-review.json`:
+```json
+{ "superReviewHelper": { "path": "/path/to/index.mjs", "timeout_seconds": 30 } }
+```
+
+Pipeline gracefully skips Phase 0.5 if the helper is unconfigured or times out — zero regression.
+
+### 5 new golden cases (total: 8)
+
+- `004-typescript-any-in-public-api` — FIX-BEFORE-MERGE. Stripe webhook handler signature widened to `any`, breaks downstream `formatAmount(amount, currency)` call where `amount` was `number | null` in the original union. Tests `super-review:typescript` reviewer's ability to follow the cross-function consequence — a shallow grep on `any` would catch the line but miss the consumer bug.
+- `005-react-useeffect-race` — FIX-BEFORE-MERGE. UserProfile component grows a `useEffect` that fetches `/api/user/${userId}` and setState's without `AbortController`. Tests `super-review:react` — stale write race when `userId` changes mid-flight; user sees wrong-user data.
+- `006-nextjs-server-action-no-auth` — BLOCK. New `'use server'` action file exports `deletePost(formData)` calling `db.post.delete({ where: { id: formData.get('id') } })` with no auth, no Zod, no authorization. Tests `super-review:nextjs` + `super-review:cybersec` (OWASP A01 BOLA / CWE-862, CWE-639). Also tests against the "safe because no client imports it" rationalization.
+- `007-math-random-reset-token` — BLOCK. Password reset flow generates token via `Math.random().toString(36).slice(2)`. Tests `super-review:crypto` (CWE-338) — xorshift128+ state recovery enables full account takeover. Also tests against severity-demotion to "consider using" (a common LLM failure mode on crypto findings).
+- `008-i18n-key-parity-drift` — FIX-BEFORE-MERGE. New `share.modal.bookClubMode` key added to `pl.json` only; `en.json` + `de.json` unchanged. Tests `super-review:i18n` — users in en/de see raw key or fallback in wrong language. Also tests that reviewer doesn't flag the (correct) component usage.
+
+All cases ship with: `notes.md` (skill aspect exercised, expected severity, reasoning), `base/<minimal-tree>/<file>`, `pr.diff`, `expected.json` (must_find + must_not_find + tolerance).
+
+### Honest gaps (still + new)
+
+- Semantic-diff helper covers TS/JS only at the symbol level. Python / Go / Rust / others are recognized in language breakdown but produce no per-symbol diff. Adding them is straightforward — a new `extract*` function per language; PRs welcome.
+- Auto mode of the golden harness now has a real consumer for `--json-output`, but the orchestrator implementation of the flag itself is *spec-defined* in `skills/run/SKILL.md` and will land in production with the next Claude Code interaction that exercises the run-skill against a PR with the flag set.
+- More golden cases needed: K8s, Dockerfile, Terraform, GraphQL, Go, Rust, Python sub-skills all lack a dedicated case. Plan for v2.3+: 1-2 cases per sub-skill until each is covered.
+
+---
+
 ## v2.1.0 — 2026-05-16
 
 Ships the v2.0 promises: golden-PR harness runner + 3 seed cases, plus a contributor-facing `CLAUDE.md`.

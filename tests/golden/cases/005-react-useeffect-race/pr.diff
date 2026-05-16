@@ -1,0 +1,35 @@
+diff --git a/frontend/src/components/UserProfile.tsx b/frontend/src/components/UserProfile.tsx
+index a1b2c3d..e4f5g6h 100644
+--- a/frontend/src/components/UserProfile.tsx
++++ b/frontend/src/components/UserProfile.tsx
+@@ -1,14 +1,28 @@
+-import React from "react";
++import React, { useEffect, useState } from "react";
+
+ interface UserProfileProps {
+   userId: string;
+ }
+
++interface User {
++  id: string;
++  name: string;
++  email: string;
++}
++
+ export function UserProfile({ userId }: UserProfileProps): React.ReactElement {
++  const [user, setUser] = useState<User | null>(null);
++
++  useEffect(() => {
++    fetch(`/api/user/${userId}`)
++      .then((res) => res.json())
++      .then((data: User) => setUser(data));
++  }, [userId]);
++
+   return (
+     <section className="user-profile">
+       <h2>User profile</h2>
+-      <p>Loading profile for {userId}…</p>
++      <p>{user ? `${user.name} (${user.email})` : `Loading profile for ${userId}…`}</p>
+     </section>
+   );
+ }

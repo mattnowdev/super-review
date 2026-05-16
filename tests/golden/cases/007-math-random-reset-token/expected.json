@@ -1,0 +1,32 @@
+{
+  "case_id": "007-math-random-reset-token",
+  "summary": "New password-reset flow mints the reset token via Math.random().toString(36).slice(2). Non-CSPRNG output (xorshift128+) is state-recoverable from a handful of observations, enabling silent account takeover for any victim the attacker targets. Storage path is fine; the generation call is the bug.",
+  "must_find": [
+    {
+      "severity": "BLOCK",
+      "skill": "crypto",
+      "file": "backend/src/auth/passwordReset.ts",
+      "line_range": [4, 4],
+      "pattern_keyword": "Math.random",
+      "secondary_keywords": ["CSPRNG", "weak RNG", "crypto.randomBytes", "xorshift", "predictable"],
+      "owasp_or_cwe": ["CWE-338", "A02:2021"]
+    }
+  ],
+  "must_not_find": [
+    {
+      "reason": "Storing the reset token via db.user.update is the conventional pattern for short-lived bearer secrets; the bug is in generation, not persistence. Reviewer must not invent a 'tokens stored in plaintext' BLOCK finding on the update call.",
+      "file": "backend/src/auth/passwordReset.ts",
+      "pattern_keyword": "db.user.update"
+    },
+    {
+      "reason": "Severity must not be downgraded to FIX-FOLLOWUP or NIT. Predictable password-reset tokens are account-takeover-grade and must block merge. A finding worded as 'consider using crypto.randomBytes' at non-BLOCK severity fails the calibration test.",
+      "file": "backend/src/auth/passwordReset.ts",
+      "pattern_keyword": "consider using"
+    }
+  ],
+  "tolerance": {
+    "extra_findings_allowed": 1,
+    "extra_must_be": ["FIX-FOLLOWUP", "NIT"],
+    "note": "Reviewer may legitimately surface a FIX-FOLLOWUP for the missing token TTL (no resetTokenExpiresAt column written, no single-use/consume semantics). One such adjacent finding is acceptable and does not affect grading."
+  }
+}
