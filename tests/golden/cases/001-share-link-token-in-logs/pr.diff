@@ -1,0 +1,14 @@
+diff --git a/backend/src/server/hooks/registerHooks.ts b/backend/src/server/hooks/registerHooks.ts
+index a1b2c3d..e4f5g6h 100644
+--- a/backend/src/server/hooks/registerHooks.ts
++++ b/backend/src/server/hooks/registerHooks.ts
+@@ -16,4 +16,9 @@ export function registerHooks(app: FastifyInstance): void {
+     }
+     await authPrehandler(request, reply);
+   });
++
++  // Request logging.
++  app.addHook("onRequest", async (request) => {
++    request.log.info({ url: request.url }, "Incoming request");
++  });
+ }

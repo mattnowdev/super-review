@@ -1,0 +1,38 @@
+{
+  "case_id": "002-prisma-tx-network-io",
+  "summary": "Network I/O (Stripe charge) inside prisma.$transaction; transaction also uses outer prisma client (not tx) for one of the two writes.",
+  "must_find": [
+    {
+      "severity": "FIX-FOLLOWUP",
+      "skill": "postgres",
+      "file": "backend/src/orders/createOrder.ts",
+      "line_range": [11, 14],
+      "pattern_keyword": "idle in transaction",
+      "secondary_keywords": ["network", "stripe", "$transaction"]
+    },
+    {
+      "severity": "FIX-FOLLOWUP",
+      "skill": "orm",
+      "file": "backend/src/orders/createOrder.ts",
+      "line_range": [15, 18],
+      "pattern_keyword": "outer prisma client",
+      "secondary_keywords": ["tx", "transaction", "$transaction"]
+    }
+  ],
+  "must_not_find": [
+    {
+      "reason": "There is no auth issue introduced in this diff; reviewer must not invent a cybersec finding here.",
+      "file": "backend/src/orders/createOrder.ts",
+      "pattern_keyword": "auth"
+    },
+    {
+      "reason": "There is no data-integrity bug. The Stripe call surviving rollback is a separate concern from the tx semantics being correct for the DB writes. Reviewer must not BLOCK this PR.",
+      "file": "backend/src/orders/createOrder.ts",
+      "severity": "BLOCK"
+    }
+  ],
+  "tolerance": {
+    "extra_findings_allowed": 1,
+    "extra_must_be": ["FIX-FOLLOWUP", "NIT"]
+  }
+}

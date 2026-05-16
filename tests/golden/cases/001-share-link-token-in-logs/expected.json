@@ -1,0 +1,32 @@
+{
+  "case_id": "001-share-link-token-in-logs",
+  "summary": "New onRequest access-log hook emits request.url raw; share-link routes register /share-links/:token/preview and /share-links/:token/accept; tokens land in pino logs.",
+  "must_find": [
+    {
+      "severity": "BLOCK",
+      "skill": "cybersec",
+      "file": "backend/src/server/hooks/registerHooks.ts",
+      "line_range": [20, 22],
+      "pattern_keyword": "share-link",
+      "secondary_keywords": ["token", "log", "bearer"],
+      "owasp_or_cwe": ["A09", "CWE-532"]
+    }
+  ],
+  "must_not_find": [
+    {
+      "reason": "errorHandler's sanitizeUrl regex works correctly for backend routes; reviewer must not invent a 'regex too narrow' finding because the only backend route pattern is /share-links/<token>/...",
+      "file": "backend/src/server/errorHandler/errorHandler.ts",
+      "pattern_keyword": "sanitizeUrl regex"
+    },
+    {
+      "reason": "Pre-existing files unchanged in this diff; must not flag content from share/index.ts as PR-introduced.",
+      "file": "backend/src/modules/routes/share/index.ts",
+      "pattern_keyword": "pre-existing"
+    }
+  ],
+  "tolerance": {
+    "extra_findings_allowed": 1,
+    "extra_must_be": ["FIX-FOLLOWUP", "NIT"],
+    "note": "Reviewer may legitimately surface a FIX-FOLLOWUP suggesting Sentry breadcrumb redaction even though that's adjacent to the BLOCK; one such adjacency finding is allowed."
+  }
+}

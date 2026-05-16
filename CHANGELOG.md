@@ -1,5 +1,35 @@
 # Changelog
 
+## v2.1.0 — 2026-05-16
+
+Ships the v2.0 promises: golden-PR harness runner + 3 seed cases, plus a contributor-facing `CLAUDE.md`.
+
+### Golden-PR harness — runner + scorer + seed cases
+
+- **`tests/golden/run.sh`** — case runner. Two modes:
+  - `manual` (default): prints diff per case; you write findings to `results/<case>/findings.json`; scorer runs at end. Use when no Claude Code CLI is available.
+  - `auto` (`HARNESS_MODE=auto`): builds a scratch git repo from `base/` + applies `pr.diff`, invokes `claude --no-interactive` against super-review, captures findings JSON, scores. Requires `ANTHROPIC_API_KEY` and the Claude Code CLI.
+- **`tests/golden/score.mjs`** — generic scorer. Takes any `findings.json` + matching `expected.json` and emits `must_find` / `must_not_find` / extras analysis with colored output and exit code (0 = pass, 1 = fail).
+- **Seed cases**:
+  - `001-share-link-token-in-logs` — BLOCK: new `onRequest` access-log hook emits raw `request.url`; share-link routes embed token in path. Cross-file reasoning required. Derived from PR `aleksanderkaminski/Vellam#82`.
+  - `002-prisma-tx-network-io` — FIX-FOLLOWUP: `await stripe.charges.create(...)` inside `prisma.$transaction` callback + outer `prisma` client used for one write inside `tx`. Tests severity calibration (perf/stability ≠ BLOCK).
+  - `003-cors-credential-reflect` — BLOCK: CORS handler refactored from allow-list check to reflecting any `Origin` while still sending `Allow-Credentials: true`. Tests detection of a security pattern requiring two-line combination.
+
+Each case ships: `notes.md` (what skill aspect it exercises), `base/...` (minimum file tree at BASE_SHA), `pr.diff`, `expected.json` (must_find + must_not_find + tolerance).
+
+**End-to-end smoke-tested:** scorer correctly passes case 001 with a matching finding; correctly fails when severity is demoted or a forbidden finding is posted; correctly skips when no `findings.json` exists (manual mode pre-review).
+
+### Contributor docs
+
+- **`CLAUDE.md`** at repo root — for contributors editing the plugin itself (not users running it). Covers sub-skill writing conventions, banned phrasings, orchestrator-change discipline, golden-harness workflow, versioning + release process.
+
+### Honest gaps (still)
+
+- **Semantic-diff helper binary** still not bundled — see `references/semantic-diff-helper.md` for the spec. Pipeline still gracefully skips Phase 0.5 absent the helper.
+- **Auto mode** of the golden harness assumes `claude --no-interactive` supports `/super-review:run --json-output <path>`. The orchestrator does not yet emit machine-readable JSON; that's a follow-up (the harness will work today in manual mode regardless).
+
+---
+
 ## v2.0.0 — 2026-05-16
 
 Major release. Pack now contains **22 skills** (orchestrator + 21 sub-skills) and adds 7 orchestrator features that change how the pipeline runs.

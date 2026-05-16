@@ -1,0 +1,27 @@
+{
+  "case_id": "003-cors-credential-reflect",
+  "summary": "CORS handler refactored from an allow-list check to reflecting any Origin while still sending Allow-Credentials: true. Credentialed cross-site reads from arbitrary origin enabled.",
+  "must_find": [
+    {
+      "severity": "BLOCK",
+      "skill": "cybersec",
+      "file": "backend/src/middleware/cors.ts",
+      "line_range": [8, 14],
+      "pattern_keyword": "Access-Control-Allow-Origin",
+      "secondary_keywords": ["reflect", "credentials", "allow-list", "Origin"],
+      "owasp_or_cwe": ["A07", "CWE-942", "CWE-346"]
+    }
+  ],
+  "must_not_find": [
+    {
+      "reason": "The Vary: Origin header is still set correctly; reviewer must not invent a cache-poisoning finding around it.",
+      "file": "backend/src/middleware/cors.ts",
+      "pattern_keyword": "Vary"
+    }
+  ],
+  "tolerance": {
+    "extra_findings_allowed": 1,
+    "extra_must_be": ["RED-FLAG"],
+    "note": "Reviewer may add a red flag about 'CORS hardening lost in refactor — check for similar patterns elsewhere' which is appropriate (variant-analysis)."
+  }
+}

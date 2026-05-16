@@ -1,0 +1,28 @@
+diff --git a/backend/src/orders/createOrder.ts b/backend/src/orders/createOrder.ts
+index a1b2c3d..e4f5g6h 100644
+--- a/backend/src/orders/createOrder.ts
++++ b/backend/src/orders/createOrder.ts
+@@ -1,8 +1,18 @@
+ import { prisma } from "@/db";
++import { stripe } from "@/billing/stripe";
+
+ export async function createOrder(input: { userId: string; total: number; source: string }) {
+-  const order = await prisma.order.create({
+-    data: { userId: input.userId, total: input.total, status: "pending" },
+-  });
+-  return order;
++  return prisma.$transaction(async (tx) => {
++    const order = await tx.order.create({
++      data: { userId: input.userId, total: input.total, status: "pending" },
++    });
++    const charge = await stripe.charges.create({
++      amount: input.total,
++      source: input.source,
++    });
++    await prisma.order.update({
++      where: { id: order.id },
++      data: { chargeId: charge.id, status: "charged" },
++    });
++    return order;
++  });
+ }
