@@ -52,6 +52,18 @@ The orchestrator + 7 sub-skills:
 | `super-review:llm-sec` | LLM app security depth: indirect prompt injection, output-as-executor, slopsquatting, excessive agency, vector store risks | `openai`/`@anthropic-ai/sdk`/`@ai-sdk/*`/`langchain` etc. in diff |
 | `super-review:i18n` | Internationalization: key parity, ICU pluralization, locale-naive formatting, RTL, error-message localization, test discipline | `next-intl`/`react-intl`/`react-i18next`/`i18next`/`lingui`/`@formatjs/*`/`vue-i18n` in deps, OR `locales/`/`messages/` dirs |
 | `super-review:code-smells` | Fowler / refactoring.guru catalog: Bloaters, OO Abusers, Change Preventers, Dispensables, Couplers, plus Flag Arguments, Stringly Typed, Magic Numbers | Single-file diff >150 LOC, new class >5 methods, function moves across files, or explicit `smells` mode |
+| `super-review:typescript` | TS 5.x: `any` vs `unknown`, `as` vs guards, `satisfies`, `using`, branded types, `assertNever`, `const` type params, `NoInfer` | `*.ts`/`*.tsx` in diff or `tsconfig.json` modified |
+| `super-review:testing` | Test-code quality: structural mocks, snapshot abuse, brittle selectors, missing negative cases, AAA violations, masked test infra | Test files in diff or ≥50 LOC production without tests |
+| `super-review:accessibility` | WCAG 2.2: target size 2.5.8, dragging 2.5.7, accessible auth 3.3.8/9, focus appearance 2.4.11, consistent help 3.2.6, redundant entry 3.3.7 | Client UI files in diff |
+| `super-review:graphql` | Depth/complexity limits, field-level authz, N+1 + DataLoader, persisted queries, alias-abuse rate-limit bypass, federation `@key` authz | GraphQL libs in deps or `*.graphql` files |
+| `super-review:python` | Mutable defaults, bare excepts, type-hint drift, sync-in-async, dataclass slots, 3.12/3.13 specifics (PEP 695, `@override`, free-threaded) | `*.py` or `pyproject.toml` / `requirements.txt` |
+| `super-review:go` | Goroutine leaks, context propagation, typed-nil interface, `%w` wrapping, channel direction, race patterns, 1.22+ loop var, range-over-func | `*.go` or `go.mod` modified |
+| `super-review:rust` | `unwrap`/`Clone` discipline, async cancellation soundness, `Arc<Mutex>` vs channels, `thiserror`/`anyhow`, unsafe + SAFETY | `*.rs` or `Cargo.toml` modified |
+| `super-review:kubernetes` | Resource limits, securityContext, NetworkPolicy, PDB, runAsNonRoot, secret-as-file vs env, topology spread | K8s manifests in diff |
+| `super-review:dockerfile` | Non-root user, multi-stage, `.dockerignore`, build-cache layering, secret mounts vs ARG | Dockerfile / docker-compose in diff |
+| `super-review:terraform` | State locking, `for_each` vs `count`, `lifecycle.prevent_destroy`, provider pinning, IAM via policy-document | `*.tf` / `terragrunt.hcl` / `cdktf/` |
+| `super-review:llm-prompts` | Structured output schemas, eval datasets, instruction/data delimiters, output-length caps, prompt version pinning | `prompts/` dir or system-prompt string literals >200 chars |
+| `super-review:audit-self` | Meta: reviews super-review's own past findings on a repo, proposes config + prompt edits | Manual invoke (quarterly hygiene) |
 
 ## Severity taxonomy
 
@@ -141,6 +153,71 @@ Single GitHub comment per PR, structure:
 Each finding includes: **file:line range**, **verbatim code quote**, **one-sentence impact**, **one-sentence fix**. Cybersec findings additionally cite **OWASP ID(s) + CWE ID**.
 
 Each sub-skill also ships a **"What good looks like"** section — positive patterns the reviewer can affirm in the ✅ Cleared list, not just antipatterns to flag.
+
+## Per-repo configuration
+
+Drop a `.super-review.json` at your repo root to tune the pipeline for your team. JSON Schema bundled at `.super-review.schema.json`. Common overrides:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/mattnowdev/super-review/main/.super-review.schema.json",
+  "caps": { "block": 3, "fix_before_merge": 5 },
+  "disabledSubSkills": ["accessibility"],                // skip a11y for internal admin tools
+  "severityOverrides": {
+    "postgres:lost-update-on-inventory": "BLOCK",         // your team's hard rule
+    "design:speculative-generality": "NIT"                // you ship abstractions early on purpose
+  },
+  "patternAllowlist": [
+    { "skill": "crypto", "pattern": "math-random-tokens", "paths": ["**/*.test.*"], "reason": "Fixtures only" }
+  ],
+  "crossModelCheck": { "enabled": true, "model": "gpt-5" },   // Phase 4.5
+  "autoFileIssues": true,                                      // auto gh issue create for 🟣
+  "tokenBudget": { "warnAboveUsd": 1.00, "abortAboveUsd": 5.00 },
+  "inlineReviewThreads": true,                                 // per-line threads vs summary
+  "language": "pl"                                             // primary UI language for i18n inference
+}
+```
+
+## Pipeline features
+
+Beyond the 5-phase core, v2.0 adds optional phases:
+
+- **Phase 0.5 — Semantic diff** (if a tree-sitter helper is configured): AST-level diff feeds reviewers with changed-symbol signatures, callers, type flow. Kills hallucinated line numbers. Helper interface spec at `references/semantic-diff-helper.md`; building the helper itself is follow-up engineering.
+- **Phase 4.5 — Cross-model check** (optional, configurable): external model (GPT-5 / Gemini 3) re-derives findings from cited code. DISAGREE demotes severity by one tier. Defends against "Claude agreeing with Claude" shared-prior bias.
+- **Phase 6 — Apologize-and-re-review** (on demand): re-evaluates own findings against author replies on inline threads. Retracts with apology if author cited concrete evidence; holds + explains if author said "no" without evidence. Triggered via `/super-review:run rereview <PR>`.
+- **Cross-PR memory**: persists findings + outcomes per repo. Phase 2 down-weights historically-rejected patterns; Phase 4 escalates patterns the repo keeps re-introducing.
+- **Streaming progress markers**: each phase emits status; in CI, a `🤖 super-review status` comment is updated in-place.
+- **Token-budget estimator**: pre-flight cost estimate; confirms above threshold, aborts + proposes chunking above hard cap.
+- **Onboarding mode** (`--onboard`): one-time stack detection on a fresh repo; scaffolds starter `CLAUDE.md` + `.super-review.json` as a PR.
+- **Auto-issue creation** for 🟣 pre-existing bugs (opt-in).
+
+## CI integration: GitHub Action
+
+```yaml
+# .github/workflows/super-review.yml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: mattnowdev/super-review/.github/actions/super-review@v2
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          mode: full   # or fast / sec / smells
+```
+
+Composite action: installs Claude Code CLI + super-review plugin, runs the pipeline against the current PR, posts inline review threads, emits `verdict` / `block-count` / `finding-count` outputs for downstream jobs.
+
+## Quality regression: golden-PR harness
+
+`tests/golden/` holds scaffolding for the regression suite: per-case directories with `pr.diff`, baseline file tree, `expected.json` (must-find + must-not-find), and a runner that scores precision/recall over a fixed corpus. Run after any sub-skill or orchestrator edit to confirm the pipeline still catches what it should and doesn't fabricate what it shouldn't. **Scaffolding only as of v2.0**; runner + seed cases are a v2.1 follow-up. Contributors welcome to land the first cases.
 
 ## Project conventions take precedence
 

@@ -1,0 +1,90 @@
+name: super-review
+description: Run the super-review multi-agent PR review pipeline in CI. Posts findings as inline review threads on the PR.
+author: Matt Nowicki
+
+inputs:
+  anthropic-api-key:
+    description: Anthropic API key for the Claude Code CLI.
+    required: true
+  github-token:
+    description: GitHub token with write access to PR comments and reviews.
+    required: true
+    default: ${{ github.token }}
+  mode:
+    description: 'Pipeline mode: full | fast | sec | smells'
+    required: false
+    default: 'full'
+  pr-number:
+    description: 'PR number to review. Defaults to current PR in workflow context.'
+    required: false
+  config-path:
+    description: 'Path to .super-review.json. Defaults to repo root.'
+    required: false
+    default: '.super-review.json'
+
+outputs:
+  verdict:
+    description: 'Ready to merge | Needs attention | Needs work'
+  block-count:
+    description: Number of 🔴 BLOCK findings posted.
+  finding-count:
+    description: Total findings posted across all severities.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Claude Code CLI
+      shell: bash
+      run: |
+        if ! command -v claude &> /dev/null; then
+          npm install -g @anthropic-ai/claude-code@latest
+        fi
+
+    - name: Install super-review plugin
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        claude plugin marketplace add mattnowdev/super-review || true
+        claude plugin install super-review@super-review || true
+
+    - name: Determine PR number
+      id: pr
+      shell: bash
+      run: |
+        PR_NUMBER="${{ inputs.pr-number }}"
+        if [ -z "$PR_NUMBER" ]; then
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        fi
+        if [ -z "$PR_NUMBER" ]; then
+          echo "::error::No PR number — provide pr-number input or run on pull_request events."
+          exit 1
+        fi
+        echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+    - name: Run super-review
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        claude --no-interactive \
+          "/super-review:run ${{ inputs.mode }} ${{ steps.pr.outputs.number }}"
+
+    - name: Emit outputs
+      shell: bash
+      run: |
+        # Parse the last super-review status comment to extract counts
+        # (orchestrator writes a machine-readable footer with verdict + counts)
+        SUMMARY=$(gh api repos/${{ github.repository }}/issues/${{ steps.pr.outputs.number }}/comments \
+          --jq '.[] | select(.body | contains("Super review")) | .body' | tail -1 || true)
+        VERDICT=$(echo "$SUMMARY" | grep -oP '(?<=Verdict\*\*: )[A-Za-z ]+' | head -1 || echo "Unknown")
+        BLOCK=$(echo "$SUMMARY" | grep -c '^### 🔴 BLOCK' || echo "0")
+        TOTAL=$(echo "$SUMMARY" | grep -cE '^\*\*[0-9]+\.' || echo "0")
+        echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+        echo "block-count=$BLOCK" >> "$GITHUB_OUTPUT"
+        echo "finding-count=$TOTAL" >> "$GITHUB_OUTPUT"
+
+branding:
+  icon: search
+  color: orange

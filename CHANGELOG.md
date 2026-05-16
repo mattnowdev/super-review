@@ -1,5 +1,51 @@
 # Changelog
 
+## v2.0.0 — 2026-05-16
+
+Major release. Pack now contains **22 skills** (orchestrator + 21 sub-skills) and adds 7 orchestrator features that change how the pipeline runs.
+
+### New sub-skills (11)
+
+- **`super-review:typescript`** — TS 5.x: `any` vs `unknown`, `as` vs guards, `satisfies`, `using`, branded types, `assertNever`, `const` type params, `NoInfer`. Auto-loads on `*.ts`/`*.tsx` / `tsconfig.json`.
+- **`super-review:testing`** — test-code quality: structural mocks, snapshot abuse, brittle selectors, missing negative cases, AAA violations, masked test infra. Auto-loads on test files in diff.
+- **`super-review:accessibility`** — WCAG 2.2 specifics: target size 2.5.8, dragging movements 2.5.7, accessible auth 3.3.8/9, focus appearance 2.4.11, consistent help 3.2.6, redundant entry 3.3.7. Auto-loads on client UI changes.
+- **`super-review:graphql`** — depth/complexity limits, field-level authz, N+1/DataLoader, persisted queries, alias-abuse rate-limit bypass, federation `@key` authz. Auto-loads on GraphQL deps or `*.graphql`.
+- **`super-review:python`** — mutable defaults, bare excepts, type-hint drift, sync-in-async, dataclass slots, 3.12/3.13 specifics (PEP 695, `@override`, free-threaded, async-gen finalization). Auto-loads on `*.py` / `pyproject.toml`.
+- **`super-review:go`** — goroutine leaks, context propagation, typed-nil interface, `%w` wrapping, channel direction, race patterns, 1.22+ loop variable semantics, range-over-func. Auto-loads on `*.go` / `go.mod`.
+- **`super-review:rust`** — `unwrap`/`Clone` discipline, async cancellation soundness, `Arc<Mutex>` vs channels, `thiserror`/`anyhow`, unsafe + SAFETY comments. Auto-loads on `*.rs` / `Cargo.toml`.
+- **`super-review:kubernetes`** — resource limits, securityContext, NetworkPolicy, PDB, runAsNonRoot, secret-as-file vs env, topology spread. Auto-loads on K8s manifests.
+- **`super-review:dockerfile`** — non-root user, multi-stage, `.dockerignore`, build-cache layering, secret mounts vs ARG. Auto-loads on Dockerfile/docker-compose.
+- **`super-review:terraform`** — state locking, `for_each` vs `count`, lifecycle.prevent_destroy, provider pinning, IAM via policy-document. Auto-loads on `*.tf`.
+- **`super-review:llm-prompts`** — structured output schemas, eval datasets, instruction/data delimiters, output-length caps, prompt version pinning. Auto-loads on `prompts/` dir or large system-prompt string literals.
+
+Plus meta-skill: **`super-review:audit-self`** — reviews super-review's own past findings on a repo, proposes config patches + prompt edits. Invoke quarterly or after embarrassing misses.
+
+### Orchestrator features (Phase 0 → Phase 6)
+
+- **Inline review threads** (preferred posting mode) — each finding becomes a resolvable thread on its diff line via `gh api pulls/.../reviews` with per-finding `comments[]`. Top-level summary contains verdict + index + red flags + cleared list only. Falls back to summary comment if line is outside diff hunk.
+- **Per-repo `.super-review.json` config** — caps, disabled reviewers, disabled sub-skills, severity overrides, pattern allow-lists, project red-flag addons, cross-model toggle, token budget. JSON Schema bundled at `.super-review.schema.json`.
+- **Phase 0.5 (semantic diff)** — optional helper interface; orchestrator consumes AST diff if a tree-sitter helper is configured. Spec at `references/semantic-diff-helper.md`. Defends against hallucinated line numbers + missed call sites. Helper binary itself is a follow-up engineering project.
+- **Phase 4.5 (cross-model check)** — optional external-model verifier (GPT-5 / Gemini 3 / etc.) runs over final findings to defend against "Claude agreeing with Claude" shared-prior bias. Configurable per-severity. Demotes (doesn't drop) findings the cross-model materially disagrees on.
+- **Phase 6 (apologize-and-re-review)** — triggered after PR author responds to inline threads. Re-derives findings from code vs author pushback; retracts with apology if author cited evidence; holds + explains if author said "no" without evidence.
+- **Cross-PR memory** at `.claude/super-review/<repo>/history.jsonl`. Phase 2 down-weights patterns this repo has historically rejected as FP; Phase 4 escalates patterns this repo keeps re-introducing despite past flags + proposes a CLAUDE.md edit.
+- **Streaming progress markers** — each phase emits status to stdout (and to a `🤖 super-review status` PR comment that's updated in-place in CI). No more silent multi-minute waits.
+- **Token budget estimator** — pre-flight estimate before Phase 1 dispatch. Confirms with user above `warnAboveUsd`; aborts + proposes chunking above `abortAboveUsd`.
+- **Onboarding mode** (`/super-review:run --onboard`) — one-time stack detection + scaffolds starter `CLAUDE.md` + `.super-review.json` as a PR for the team to merge.
+- **Auto-file 🟣 pre-existing as issues** — optional; if `autoFileIssues: true` in config, every pre-existing bug discovered is auto-filed via `gh issue create --label super-review-preexisting`.
+
+### Infrastructure
+
+- **GitHub Action** at `.github/actions/super-review/action.yml` — composite action that installs Claude Code + super-review plugin, runs the pipeline against the current PR, emits `verdict` / `block-count` / `finding-count` outputs. Drop into any repo's workflow without local install.
+- **Golden-PR test harness scaffolding** at `tests/golden/` — directory structure + scoring schema for regression-testing the pipeline against a fixed corpus of anonymized PRs with known findings. Runner + seed cases are a v2.1 follow-up.
+
+### Honest gaps
+
+- **Semantic-diff helper binary** is not bundled. Spec is shipped (`references/semantic-diff-helper.md`); building the tree-sitter implementation is follow-up engineering. Pipeline gracefully skips Phase 0.5 if no helper is configured.
+- **Golden-PR test harness** has the scaffolding but no runner or seed cases yet. Contributors welcome to land the first cases.
+- **Phase 6 apologize-and-re-review** depends on inline threads being posted (Phase 5 inline-thread mode); won't work if running in fallback summary-comment mode.
+
+---
+
 ## v1.1.0 — 2026-05-16
 
 Three additions driven by review-quality feedback:

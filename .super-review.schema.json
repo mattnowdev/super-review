@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/mattnowdev/super-review/main/.super-review.schema.json",
+  "title": "super-review configuration",
+  "description": "Per-repo configuration for super-review. Place at repo root as .super-review.json. All fields optional; orchestrator falls back to defaults.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "caps": {
+      "type": "object",
+      "description": "Override the default hard caps on posted findings per severity tier.",
+      "additionalProperties": false,
+      "properties": {
+        "block": { "type": "integer", "minimum": 0, "default": 3 },
+        "fix_before_merge": { "type": "integer", "minimum": 0, "default": 5 },
+        "fix_followup": { "type": "integer", "minimum": 0, "default": 5 },
+        "nit": { "type": "integer", "minimum": 0, "default": 3 },
+        "red_flag": { "type": "integer", "minimum": 0, "default": 3 }
+      }
+    },
+    "disabledReviewers": {
+      "type": "array",
+      "description": "Reviewer roles to skip even when triggers fire. Valid: cybersec, supply-chain, correctness, design, migration, performance, frontend, observability, tests.",
+      "items": {
+        "enum": ["cybersec", "supply-chain", "correctness", "design", "migration", "performance", "frontend", "observability", "tests"]
+      },
+      "uniqueItems": true
+    },
+    "disabledSubSkills": {
+      "type": "array",
+      "description": "Sub-skill names to skip loading even when triggers fire (e.g. ['accessibility'] for an internal admin tool with no a11y target).",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "severityOverrides": {
+      "type": "object",
+      "description": "Pattern-name → severity tier. Promotes or demotes specific anti-patterns from their sub-skill defaults. Pattern names are the slugified anti-pattern titles.",
+      "additionalProperties": {
+        "enum": ["BLOCK", "FIX-BEFORE-MERGE", "FIX-FOLLOWUP", "NIT", "DROP"]
+      }
+    },
+    "patternAllowlist": {
+      "type": "array",
+      "description": "Patterns the team consciously accepts in specific paths. Findings matching these patterns + paths are auto-dropped at Phase 2.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["skill", "pattern", "paths"],
+        "properties": {
+          "skill": { "type": "string", "description": "Sub-skill name, e.g. 'crypto'." },
+          "pattern": { "type": "string", "description": "Slugified anti-pattern name." },
+          "paths": {
+            "type": "array",
+            "description": "Glob patterns for paths where this anti-pattern is accepted.",
+            "items": { "type": "string" }
+          },
+          "reason": { "type": "string", "description": "Why this exception exists. Required if path is broad." }
+        }
+      }
+    },
+    "redFlagAddons": {
+      "type": "array",
+      "description": "Project-specific red flags to add to the Design / blast-radius reviewer's checklist.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "trigger"],
+        "properties": {
+          "name": { "type": "string" },
+          "trigger": { "type": "string", "description": "Glob pattern OR plain-English description of when this red flag applies." },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "crossModelCheck": {
+      "type": "object",
+      "description": "Phase 4.5 — optional cross-model verification (defends against Claude-agreeing-with-Claude bias).",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "model": {
+          "type": "string",
+          "description": "External model identifier, e.g. 'gpt-5', 'gemini-3-pro', 'grok-3'.",
+          "default": "gpt-5"
+        },
+        "onlyFor": {
+          "type": "array",
+          "description": "Only cross-check findings of these severities. Default: all.",
+          "items": { "enum": ["BLOCK", "FIX-BEFORE-MERGE", "FIX-FOLLOWUP"] }
+        },
+        "apiKeyEnvVar": {
+          "type": "string",
+          "description": "Env var name where the external API key lives.",
+          "default": "OPENAI_API_KEY"
+        }
+      }
+    },
+    "autoFileIssues": {
+      "type": "boolean",
+      "description": "If true, every 🟣 pre-existing bug discovered is auto-filed as a GitHub issue via `gh issue create`.",
+      "default": false
+    },
+    "tokenBudget": {
+      "type": "object",
+      "description": "Token-spend guardrails for the pipeline.",
+      "additionalProperties": false,
+      "properties": {
+        "warnAboveUsd": {
+          "type": "number",
+          "description": "Show estimate + confirm prompt if estimated total exceeds this USD amount.",
+          "default": 1.00
+        },
+        "abortAboveUsd": {
+          "type": "number",
+          "description": "Abort the run if estimated total exceeds this USD amount; propose chunking instead.",
+          "default": 5.00
+        }
+      }
+    },
+    "superReviewHelper": {
+      "type": "object",
+      "description": "Optional helper binary for semantic-diff parsing (Phase 0.5).",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "description": "Path to executable that takes BASE_SHA HEAD_SHA and emits AST diff JSON to stdout." },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "default": 30 }
+      }
+    },
+    "inlineReviewThreads": {
+      "type": "boolean",
+      "description": "Post findings as per-line inline review threads (preferred). Set false to use single summary comment.",
+      "default": true
+    },
+    "language": {
+      "type": "string",
+      "description": "Primary UI language for project (informs i18n review). e.g. 'pl', 'en', 'de'. Used in CLAUDE.md inference too.",
+      "default": "en"
+    }
+  }
+}

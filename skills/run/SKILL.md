@@ -84,6 +84,17 @@ Build the **scope brief** — pasted into every downstream reviewer prompt:
 | `super-review:llm-sec` | `openai` / `@anthropic-ai/sdk` / `@ai-sdk/*` / `langchain` / `llamaindex` / pinecone / weaviate / qdrant in deps or diff |
 | `super-review:i18n` | `next-intl` / `react-intl` / `react-i18next` / `i18next` / `lingui` / `@formatjs/*` / `vue-i18n` in deps, OR `locales/`/`messages/`/`i18n/` dir, OR translation JSON/YAML in diff |
 | `super-review:code-smells` | Single-file diff > 150 LOC, new class with > 5 methods, function moves across files, OR explicit `smells` mode |
+| `super-review:typescript` | `*.ts` / `*.tsx` in diff OR `tsconfig.json` modified |
+| `super-review:testing` | Test files in diff (`*.test.*`, `*.spec.*`, `__tests__/`) OR ≥ 50 LOC production code added without corresponding tests |
+| `super-review:accessibility` | `client/` / `app/` / `*.tsx`/`*.jsx`/`*.vue`/`*.svelte` files OR HTML templates in diff |
+| `super-review:graphql` | `graphql` / `@apollo/*` / `@graphql-tools/*` / `mercurius` / `type-graphql` / `nexus` in deps, OR `*.graphql` / `*.gql` / resolver files in diff |
+| `super-review:python` | `*.py` files in diff OR `pyproject.toml` / `requirements.txt` / `Pipfile` modified |
+| `super-review:go` | `*.go` files in diff OR `go.mod` / `go.sum` modified |
+| `super-review:rust` | `*.rs` files in diff OR `Cargo.toml` / `Cargo.lock` modified |
+| `super-review:kubernetes` | `*.yaml`/`*.yml` with `apiVersion:` + `kind:` markers, OR `helm/` / `kustomize/` / `k8s/` / `manifests/` dirs in diff |
+| `super-review:dockerfile` | `Dockerfile`, `Dockerfile.*`, `*.dockerfile`, `docker-compose.yml`, `.dockerignore` in diff |
+| `super-review:terraform` | `*.tf` / `*.tfvars` / `terragrunt.hcl` / `cdktf/` in diff |
+| `super-review:llm-prompts` | `prompts/` dir, `*.prompt.{md,txt}`, `*.prompts.{yaml,json}`, `eval/` LLM datasets, OR system-prompt string literals > 200 chars in code |
 
 For each fired trigger, the orchestrator reads the corresponding `skills/<name>/SKILL.md` and appends its anti-pattern catalog to the **Cybersec L5**, **Correctness**, and **Design** reviewer prompts (or only the ones for which the catalog is relevant — e.g. `crypto` → Cybersec only). The brief records which sub-skills were loaded.
 
@@ -429,6 +440,25 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 
 ### Posting rules
 
+**Preferred: inline review threads.** Findings are posted as **per-line inline review threads** via:
+
+```
+gh api repos/<owner>/<repo>/pulls/<n>/reviews \
+  -F commit_id=<head_sha> \
+  -F event=COMMENT \
+  -F 'body=<top-level summary>' \
+  -F 'comments[][path]=<file>' \
+  -F 'comments[][line]=<line>' \
+  -F 'comments[][body]=<finding body>' \
+  -F 'comments[][side]=RIGHT'
+```
+
+Why: each finding becomes a resolvable thread on the diff line where it lives; PR authors can mark `Resolve conversation` per-issue; line context renders inline. The single top-level review body contains only the **verdict + finding index + red flags + cleared list** — individual findings live in their respective threads.
+
+If inline threads can't be posted (e.g. line not in the diff hunk because the finding spans a moved file), **fall back to a single summary comment with that finding included inline**.
+
+Fallback summary-comment rules (unchanged):
+
 1. **Always post via `--body-file`, never via heredoc.** Markdown bodies must be written to a temp file (e.g. `/tmp/super-review-<pr>-body.md`) and posted with:
    ```
    gh pr comment <n> --repo <owner/repo> --body-file /tmp/super-review-<pr>-body.md
@@ -475,6 +505,130 @@ Two-pass review (N parallel specialists → false-positive gate → Opus meta-ve
 - Not for first-pass triage in 30 seconds. For that, use a single-agent `review` invocation.
 - Not for the *recipient* side of feedback — that's `superpowers:receiving-code-review`. Chain into it after this skill posts.
 
+## Per-repo configuration: `.super-review.json`
+
+If the target repo contains `.super-review.json` at root, Phase 0 reads it and applies overrides. Schema reference: `.super-review.schema.json` at this plugin's root.
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/mattnowdev/super-review/main/.super-review.schema.json",
+  "caps": {
+    "block": 3,
+    "fix_before_merge": 5,
+    "fix_followup": 5,
+    "nit": 3,
+    "red_flag": 3
+  },
+  "disabledReviewers": ["frontend"],          // skip frontend for backend-only services
+  "disabledSubSkills": ["accessibility"],     // skip a11y if not relevant
+  "severityOverrides": {                       // promote/demote specific patterns
+    "new-endpoint-without-metric": "BLOCK",
+    "long-method": "NIT"
+  },
+  "patternAllowlist": [                        // patterns the team consciously accepts
+    { "skill": "crypto", "pattern": "math-random-tokens", "paths": ["tests/fixtures/**"] }
+  ],
+  "redFlagAddons": [                           // project-specific red flags
+    { "name": "schema migration during business hours", "trigger": "migrations/*.ts" }
+  ],
+  "crossModelCheck": {                         // Phase 4.5
+    "enabled": false,
+    "model": "gpt-5",
+    "onlyFor": ["BLOCK", "FIX-BEFORE-MERGE"]
+  },
+  "autoFileIssues": false,                     // auto gh issue create for 🟣 pre-existing
+  "tokenBudget": {
+    "warnAboveUsd": 1.00,
+    "abortAboveUsd": 5.00
+  }
+}
+```
+
+Reviewers' prompts include the relevant overrides; the orchestrator validates the file against the schema and refuses to proceed if invalid (with the validation error).
+
+## Phase 0.5: SEMANTIC DIFF (when available)
+
+**Optional — strongest accuracy gain when present.** If a tree-sitter helper is configured (via `superReviewHelper` config or `~/.claude/super-review/helpers/semantic-diff`), Phase 0 invokes it to produce an AST-level diff: which functions/classes/symbols changed, their callers, type flow. Output goes into the scope brief and is consumed by reviewers to:
+
+- Avoid hallucinated line numbers (positions come from the AST, not raw diff text)
+- Find call sites of changed functions across the codebase
+- Catch flow-sensitive issues (variable mutability changed → callers affected)
+
+If no helper is configured, Phase 0.5 is skipped and reviewers use raw `git diff` (current behavior). Helper interface spec: see `references/semantic-diff-helper.md` in this plugin root.
+
+## Phase 4.5: CROSS-MODEL CHECK (optional)
+
+**Defends against "Claude agreeing with Claude" shared-prior risk.** Enabled via config `crossModelCheck.enabled: true`. After Phase 4 (Opus meta), the orchestrator invokes the configured external model (GPT-5 / Gemini 3 / etc.) on the final findings list and asks: *"Re-derive the impact of each of these N findings from the cited code alone. Report DISAGREE if the impact doesn't follow."*
+
+Any DISAGREE with concrete reasoning → demote one severity tier (BLOCK → FIX-BEFORE-MERGE, etc.) and flag in the meta artifact. Doesn't drop findings; just adjusts confidence. Skip if model returns rate-limit / timeout.
+
+## Phase 6: APOLOGIZE-AND-RE-REVIEW (post-author-response)
+
+**Triggered on demand**, not automatic. When the PR author has replied to inline threads, the orchestrator can re-read its own findings against author pushback:
+
+- For each thread with author response: classify as `accept` / `partial` / `dispute`.
+- For `dispute`: re-derive the finding from code. If the author cited concrete evidence (file:line, test result, external reference), retract with an apology comment. If the author said "no" without evidence, hold and explain why.
+- Output is a new top-level comment summarizing accepted retractions + held findings + new findings (if author's response surfaced a related issue).
+
+Triggered via `/super-review:run rereview <PR>`.
+
+## Cross-PR memory
+
+Per-repo: `.claude/super-review/<repo>/history.jsonl`. Each line: `{ pr, finding_id, skill, pattern, severity, file_line, outcome }`. Outcomes captured: `merged` (accepted), `dismissed-by-author` (with optional reason), `dropped-by-meta`, `cross-model-disagreed`.
+
+Phase 2 reads history at startup and **down-weights** patterns this repo has historically rejected as FP (drop them at the gate unless evidence is HIGH-confidence + new file). Phase 4 **escalates** patterns this repo keeps re-introducing despite past flags (the PR doesn't fix it, history shows N similar occurrences → upgrade severity AND propose a CLAUDE.md edit).
+
+Memory is gitignored by default (per-developer); teams can opt to commit it for shared learning.
+
+## Streaming progress
+
+Each phase emits a status marker to stdout (and to a `🤖 super-review status` PR comment that's updated in-place when running in CI):
+
+```
+▸ Phase 0 (scope-lock + config + sub-skill detection)... done in 12s
+▸ Phase 1 (parallel: 7 reviewers)... done in 4m 02s — 23 findings
+▸ Phase 2 (false-positive gate)... done in 1m 14s — 14 confirmed, 9 dropped
+▸ Phase 3 (collide)... done in 38s — 2 escalated, 1 new from negative space
+▸ Phase 4 (Opus meta)... done in 51s — 1 demoted, 0 missed positives
+▸ Phase 4.5 (cross-model check, gpt-5)... done in 27s — 0 disagreed
+▸ Phase 5 (synthesize + post)... 14 findings posted as inline threads
+```
+
+This is the user-facing contract; no progress = the skill silently hung; debug accordingly.
+
+## Token budget estimator
+
+Before Phase 1 dispatch, the orchestrator estimates token spend from: file count, average file size in diff, reviewer count, sub-skill catalog sizes. Output:
+
+```
+Estimated cost for this run:
+  Phase 1 (7 reviewers × ~25k tokens each)  ~$0.92
+  Phase 2 (gate, 1 agent × ~40k)            ~$0.18
+  Phase 3 (collide, 1 × ~30k)               ~$0.14
+  Phase 4 (Opus meta × ~50k)                ~$0.45
+  ─────────
+  Total estimated:                          ~$1.69
+```
+
+If above `tokenBudget.warnAboveUsd` → confirm with user before proceeding. If above `abortAboveUsd` → abort and propose chunking.
+
+## Onboarding mode
+
+`/super-review:run --onboard` runs a one-time "discover your stack + propose conventions" pass on a fresh repo:
+
+1. Walks the codebase, detects stack signals + conventions
+2. Drafts a starter `CLAUDE.md` listing inferred rules
+3. Drafts a starter `.super-review.json` with reasonable caps for the team size
+4. Outputs a PR with both files; team reviews and merges to opt-in to super-review
+
+Use once per repo.
+
+## Auto-file 🟣 pre-existing as issues
+
+If config `autoFileIssues: true`, every pre-existing bug discovered (but never blocking the PR per the scope rule) is auto-filed via `gh issue create --label super-review-preexisting --title "..." --body "..."`. The PR comment includes a reference: "✅ 3 pre-existing bugs filed as separate issues: #142, #143, #144."
+
+If `autoFileIssues: false` (default), they're just listed in the PR comment for the team to triage.
+
 ## Bundled sub-skills (loaded on-demand by Phase 0)
 
 The `super-review` plugin ships these sibling skills. The orchestrator detects which apply to a given diff (see Phase 0 sub-skill detection table) and appends their anti-pattern catalogs to the relevant reviewer prompts. None are required — if none trigger, the pipeline runs with the inline taxonomy only.
@@ -486,6 +640,20 @@ The `super-review` plugin ships these sibling skills. The orchestrator detects w
 - **`super-review:crypto`** — Application crypto (RNG, AES-GCM IV reuse, padding oracles, JWT, password hashing, RSA, TLS, key separation)
 - **`super-review:web-headers`** — CSP / HSTS / CORS / COOP+COEP / Permissions-Policy / SRI / cookie attributes / CHIPS
 - **`super-review:llm-sec`** — LLM app security depth (indirect prompt injection, output-as-executor, slopsquatting, excessive agency, tool-arg validation, vector store risks)
+- **`super-review:i18n`** — Internationalization (key parity, ICU pluralization, locale-naive formatting, RTL, translated-text test assertions)
+- **`super-review:code-smells`** — Fowler / refactoring.guru catalog (Bloaters, OO Abusers, Change Preventers, Dispensables, Couplers, plus Flag Arguments / Stringly Typed / Magic Numbers)
+- **`super-review:typescript`** — TS 5.x specifics (`any` vs `unknown`, `as` vs guards, `satisfies`, `using`, branded types, `assertNever`, `const` type params, `NoInfer`)
+- **`super-review:testing`** — Test-code quality (structural-mock-only, snapshot abuse, brittle selectors, missing negative cases, AAA violations)
+- **`super-review:accessibility`** — WCAG 2.2 (focus management, target size 2.5.8, dragging 2.5.7, accessible auth 3.3.8/9, focus appearance 2.4.11)
+- **`super-review:graphql`** — depth/complexity limits, field-level authz, N+1 + DataLoader, persisted queries, alias-abuse rate-limit bypass
+- **`super-review:python`** — mutable defaults, bare excepts, type-hint drift, sync-in-async, dataclass slots, modern 3.12/3.13 features
+- **`super-review:go`** — goroutine leaks, context propagation, typed-nil interface, `%w` wrapping, channel direction, race-condition patterns
+- **`super-review:rust`** — `unwrap`/`Clone` discipline, async cancellation soundness, `Arc<Mutex>` vs channels, `thiserror` vs `anyhow`, unsafe + SAFETY
+- **`super-review:kubernetes`** — resource limits, securityContext, NetworkPolicy, PDB, runAsNonRoot, secret-as-file vs env
+- **`super-review:dockerfile`** — non-root user, multi-stage, `.dockerignore`, build-cache layering, secret mounts vs ARG
+- **`super-review:terraform`** — state locking, `for_each` vs `count`, lifecycle.prevent_destroy, provider pinning, IAM via policy-document
+- **`super-review:llm-prompts`** — structured output schemas, eval datasets, instruction/data delimiters, output-length caps, version pinning
+- **`super-review:audit-self`** — meta-skill that reviews super-review's own past findings on a repo, proposes config patches + prompt edits. Invoke periodically.
 
 ## Optional external enhancements (use if installed; pipeline gracefully no-ops otherwise)
 
@@ -502,8 +670,15 @@ The `super-review` plugin ships these sibling skills. The orchestrator detects w
 
 ## Triggers
 
-- `/super-review:run <PR_URL_or_number>`
+- `/super-review:run <PR_URL_or_number>` — full pipeline (default mode)
+- `/super-review:run fast <PR>` — fast mode (<200 LOC PRs)
+- `/super-review:run sec <PR>` — security-only mode
+- `/super-review:run smells <PR>` — code-smells emphasis
+- `/super-review:run --onboard` — one-time stack detection + scaffolds `CLAUDE.md` + `.super-review.json` for a fresh repo
+- `/super-review:run rereview <PR>` — Phase 6 re-evaluation after author has responded to inline threads
 - "Super review on PR #N"
 - "Full review of this branch"
 - Any GitHub PR URL pasted with "review"
 - After `/finishing-a-development-branch` selects "merge" — chain into `super-review:run` for the final pass.
+
+For periodic skill calibration: `/super-review:audit-self` (separate sub-skill).

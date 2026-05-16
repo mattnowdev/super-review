@@ -1,6 +1,6 @@
 {
   "name": "super-review",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Multi-agent PR review pipeline with on-demand framework + security sub-skills. Parallel specialist reviewers, evidence-quoted false-positive gate, Opus meta-verification, bounded synthesis. Tuned for L5 software + L5 cybersec.",
   "author": {
     "name": "Matt Nowicki"
@@ -14,11 +14,27 @@
     "security-review",
     "owasp",
     "cwe",
+    "wcag",
     "multi-agent",
+    "typescript",
     "react",
     "nextjs",
     "postgres",
+    "prisma",
+    "mikroorm",
+    "drizzle",
+    "graphql",
+    "python",
+    "go",
+    "rust",
+    "kubernetes",
+    "dockerfile",
+    "terraform",
     "crypto",
-    "llm-security"
+    "llm-security",
+    "i18n",
+    "accessibility",
+    "code-smells",
+    "refactoring"
   ]
 }
